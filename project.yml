@@ -1,0 +1,38 @@
+name: DaedalusScan
+options:
+  bundleIdPrefix: com.daedalus
+settings:
+  base:
+    SWIFT_VERSION: 5.10
+packages:
+  DaedalusContracts:
+    path: ./DaedalusContracts
+targets:
+  DaedalusScan:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: DaedalusScan
+    dependencies:
+      - package: DaedalusContracts
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.daedalus.scan
+        PRODUCT_NAME: Daedalus Scan
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Daedalus Scan
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_LSRequiresIPhoneOS: YES
+        INFOPLIST_KEY_NSCameraUsageDescription: Daedalus Scan captures room evidence photos.
+        INFOPLIST_KEY_NSPhotoLibraryUsageDescription: Daedalus Scan stores captured visit evidence.
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: Daedalus Scan records voice note evidence.
+        SUPPORTS_MACCATALYST: NO
+        TARGETED_DEVICE_FAMILY: 1
+schemes:
+  DaedalusScan:
+    build:
+      targets:
+        DaedalusScan: all
+    run:
+      config: Debug
