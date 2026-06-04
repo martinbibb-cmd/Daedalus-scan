@@ -72,6 +72,56 @@ final class VisitListViewModel: ObservableObject {
         persistChanges()
     }
 
+    func setRoomReviewStatus(_ status: ReviewStatus?, roomID: UUID, visitID: UUID) {
+        guard let visitIndex = indexOfVisit(visitID), let roomIndex = indexOfRoom(roomID, in: visitIndex) else {
+            return
+        }
+        visits[visitIndex].rooms[roomIndex].reviewStatus = status
+        persistChanges()
+    }
+
+    func setRoomReviewNotes(_ notes: String, roomID: UUID, visitID: UUID) {
+        guard let visitIndex = indexOfVisit(visitID), let roomIndex = indexOfRoom(roomID, in: visitIndex) else {
+            return
+        }
+        visits[visitIndex].rooms[roomIndex].reviewNotes = normalizedOptionalString(notes)
+        persistChanges()
+    }
+
+    func setSurveyResponseReviewStatus(
+        _ status: ReviewStatus?,
+        questionKey: String,
+        roomID: UUID,
+        visitID: UUID
+    ) {
+        guard let visitIndex = indexOfVisit(visitID), let roomIndex = indexOfRoom(roomID, in: visitIndex) else {
+            return
+        }
+        guard var response = visits[visitIndex].rooms[roomIndex].survey[questionKey] else {
+            return
+        }
+        response.reviewStatus = status
+        visits[visitIndex].rooms[roomIndex].survey[questionKey] = response
+        persistChanges()
+    }
+
+    func setSurveyResponseReviewNotes(
+        _ notes: String,
+        questionKey: String,
+        roomID: UUID,
+        visitID: UUID
+    ) {
+        guard let visitIndex = indexOfVisit(visitID), let roomIndex = indexOfRoom(roomID, in: visitIndex) else {
+            return
+        }
+        guard var response = visits[visitIndex].rooms[roomIndex].survey[questionKey] else {
+            return
+        }
+        response.reviewNotes = normalizedOptionalString(notes)
+        visits[visitIndex].rooms[roomIndex].survey[questionKey] = response
+        persistChanges()
+    }
+
     func addComponent(
         to visitID: UUID,
         kind: SystemComponentKind,
@@ -172,6 +222,24 @@ final class VisitListViewModel: ObservableObject {
         persistChanges()
     }
 
+    func setComponentReviewStatus(_ status: ReviewStatus?, componentID: UUID, visitID: UUID) {
+        guard let visitIndex = indexOfVisit(visitID),
+              let componentIndex = indexOfComponent(componentID, in: visitIndex) else {
+            return
+        }
+        visits[visitIndex].components[componentIndex].reviewStatus = status
+        persistChanges()
+    }
+
+    func setComponentReviewNotes(_ notes: String, componentID: UUID, visitID: UUID) {
+        guard let visitIndex = indexOfVisit(visitID),
+              let componentIndex = indexOfComponent(componentID, in: visitIndex) else {
+            return
+        }
+        visits[visitIndex].components[componentIndex].reviewNotes = normalizedOptionalString(notes)
+        persistChanges()
+    }
+
     func updateComponentAttribute(
         _ value: String,
         for key: String,
@@ -236,6 +304,52 @@ final class VisitListViewModel: ObservableObject {
         persistChanges()
     }
 
+    func setRoomEvidenceReviewStatus(_ status: ReviewStatus?, evidenceID: UUID, roomID: UUID, visitID: UUID) {
+        guard let visitIndex = indexOfVisit(visitID), let roomIndex = indexOfRoom(roomID, in: visitIndex) else {
+            return
+        }
+        guard let evidenceIndex = visits[visitIndex].rooms[roomIndex].evidence.firstIndex(where: { $0.id == evidenceID }) else {
+            return
+        }
+        visits[visitIndex].rooms[roomIndex].evidence[evidenceIndex].reviewStatus = status
+        persistChanges()
+    }
+
+    func setRoomEvidenceReviewNotes(_ notes: String, evidenceID: UUID, roomID: UUID, visitID: UUID) {
+        guard let visitIndex = indexOfVisit(visitID), let roomIndex = indexOfRoom(roomID, in: visitIndex) else {
+            return
+        }
+        guard let evidenceIndex = visits[visitIndex].rooms[roomIndex].evidence.firstIndex(where: { $0.id == evidenceID }) else {
+            return
+        }
+        visits[visitIndex].rooms[roomIndex].evidence[evidenceIndex].reviewNotes = normalizedOptionalString(notes)
+        persistChanges()
+    }
+
+    func setComponentEvidenceReviewStatus(_ status: ReviewStatus?, evidenceID: UUID, componentID: UUID, visitID: UUID) {
+        guard let visitIndex = indexOfVisit(visitID),
+              let componentIndex = indexOfComponent(componentID, in: visitIndex) else {
+            return
+        }
+        guard let evidenceIndex = visits[visitIndex].components[componentIndex].evidence.firstIndex(where: { $0.id == evidenceID }) else {
+            return
+        }
+        visits[visitIndex].components[componentIndex].evidence[evidenceIndex].reviewStatus = status
+        persistChanges()
+    }
+
+    func setComponentEvidenceReviewNotes(_ notes: String, evidenceID: UUID, componentID: UUID, visitID: UUID) {
+        guard let visitIndex = indexOfVisit(visitID),
+              let componentIndex = indexOfComponent(componentID, in: visitIndex) else {
+            return
+        }
+        guard let evidenceIndex = visits[visitIndex].components[componentIndex].evidence.firstIndex(where: { $0.id == evidenceID }) else {
+            return
+        }
+        visits[visitIndex].components[componentIndex].evidence[evidenceIndex].reviewNotes = normalizedOptionalString(notes)
+        persistChanges()
+    }
+
     private func indexOfVisit(_ visitID: UUID) -> Int? {
         visits.firstIndex { $0.id == visitID }
     }
@@ -254,5 +368,10 @@ final class VisitListViewModel: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func normalizedOptionalString(_ value: String) -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }

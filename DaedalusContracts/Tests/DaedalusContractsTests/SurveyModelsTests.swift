@@ -48,12 +48,24 @@ final class SurveyModelsTests: XCTestCase {
         let componentTextBytes = Data("Existing appliance photographed and noted.".utf8)
         let room = Room(
             name: "Kitchen",
+            reviewStatus: .confirmed,
+            reviewNotes: "Room details verified.",
             survey: [
-                "heating.emitters.present": SurveyResponse(booleanValue: true),
-                "ventilation.extract.count": SurveyResponse(numericValue: 2)
+                "heating.emitters.present": SurveyResponse(
+                    booleanValue: true,
+                    reviewStatus: .needsReview,
+                    reviewNotes: "Double-check emitter count."
+                ),
+                "ventilation.extract.count": SurveyResponse(numericValue: 2, reviewStatus: .draft)
             ],
             evidence: [
-                Evidence(kind: .photo, localFileName: "kitchen-photo.jpg", embeddedData: Data([0xFF, 0xD8])),
+                Evidence(
+                    kind: .photo,
+                    localFileName: "kitchen-photo.jpg",
+                    reviewStatus: .needsReview,
+                    reviewNotes: "Possible obstructions in frame.",
+                    embeddedData: Data([0xFF, 0xD8])
+                ),
                 Evidence(kind: .voiceNote, localFileName: "kitchen-note.m4a", embeddedData: Data([0x00, 0x01])),
                 Evidence(kind: .textNote, localFileName: "kitchen-note.txt", embeddedData: textBytes)
             ]
@@ -64,6 +76,8 @@ final class SurveyModelsTests: XCTestCase {
             manufacturer: "Acme",
             model: "X100",
             notes: "Observed in utility area.",
+            reviewStatus: .confirmed,
+            reviewNotes: "Visual checks complete.",
             componentAttributes: [
                 "fuelType": "Natural gas",
                 "boilerType": "Combi",
@@ -74,7 +88,13 @@ final class SurveyModelsTests: XCTestCase {
             ],
             evidence: [
                 Evidence(kind: .photo, localFileName: "boiler-photo.jpg", embeddedData: Data([0xFF, 0xD8])),
-                Evidence(kind: .textNote, localFileName: "boiler-note.txt", embeddedData: componentTextBytes)
+                Evidence(
+                    kind: .textNote,
+                    localFileName: "boiler-note.txt",
+                    reviewStatus: .rejected,
+                    reviewNotes: "Comment references wrong appliance.",
+                    embeddedData: componentTextBytes
+                )
             ]
         )
         let visit = Visit(reference: "VIS-001", twinKind: .home, rooms: [room], components: [component])
@@ -93,14 +113,24 @@ final class SurveyModelsTests: XCTestCase {
         let decodedEvidence = decoded.visits[0].rooms[0].evidence
         XCTAssertEqual(decodedEvidence.map(\.kind), [.photo, .voiceNote, .textNote])
         XCTAssertEqual(decodedEvidence[0].embeddedData, Data([0xFF, 0xD8]))
+        XCTAssertEqual(decodedEvidence[0].reviewStatus, .needsReview)
+        XCTAssertEqual(decodedEvidence[0].reviewNotes, "Possible obstructions in frame.")
         XCTAssertEqual(decodedEvidence[2].embeddedData, textBytes)
+        XCTAssertEqual(decoded.visits[0].rooms[0].reviewStatus, .confirmed)
+        XCTAssertEqual(decoded.visits[0].rooms[0].reviewNotes, "Room details verified.")
+        XCTAssertEqual(decoded.visits[0].rooms[0].survey["heating.emitters.present"]?.reviewStatus, .needsReview)
+        XCTAssertEqual(decoded.visits[0].rooms[0].survey["heating.emitters.present"]?.reviewNotes, "Double-check emitter count.")
         XCTAssertEqual(decoded.visits[0].rooms[0].survey["ventilation.extract.count"]?.numericValue, 2)
         XCTAssertEqual(decoded.visits[0].components.count, 1)
         XCTAssertEqual(decoded.visits[0].components[0].kind, .boiler)
         XCTAssertEqual(decoded.visits[0].components[0].notes, "Observed in utility area.")
+        XCTAssertEqual(decoded.visits[0].components[0].reviewStatus, .confirmed)
+        XCTAssertEqual(decoded.visits[0].components[0].reviewNotes, "Visual checks complete.")
         XCTAssertEqual(decoded.visits[0].components[0].componentAttributes["fuelType"], "Natural gas")
         XCTAssertEqual(decoded.visits[0].components[0].componentAttributes["visibleConditionNotes"], "No obvious casing damage noted")
         XCTAssertEqual(decoded.visits[0].components[0].evidence[1].embeddedData, componentTextBytes)
+        XCTAssertEqual(decoded.visits[0].components[0].evidence[1].reviewStatus, .rejected)
+        XCTAssertEqual(decoded.visits[0].components[0].evidence[1].reviewNotes, "Comment references wrong appliance.")
     }
 
     func testSectionStatusRoundTripThroughVisitPackage() throws {
@@ -199,5 +229,38 @@ final class SurveyModelsTests: XCTestCase {
         let component = try decoder.decode(SystemComponent.self, from: Data(json.utf8))
         XCTAssertEqual(component.kind, .boiler)
         XCTAssertEqual(component.componentAttributes, [:])
+        XCTAssertNil(component.reviewStatus)
+        XCTAssertNil(component.reviewNotes)
+    }
+
+    func testLegacyRoomSurveyAndEvidenceDecodeWithoutReviewFields() throws {
+        let json = """
+        {
+          "id": "00000000-0000-0000-0000-000000000003",
+          "name": "Legacy room",
+          "survey": {
+            "heating.emitters.present": {
+              "booleanValue": true
+            }
+          },
+          "evidence": [
+            {
+              "id": "00000000-0000-0000-0000-000000000004",
+              "kind": "photo",
+              "localFileName": "legacy-photo.jpg",
+              "createdAt": "2024-01-01T00:00:00Z"
+            }
+          ]
+        }
+        """
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let room = try decoder.decode(Room.self, from: Data(json.utf8))
+        XCTAssertNil(room.reviewStatus)
+        XCTAssertNil(room.reviewNotes)
+        XCTAssertNil(room.survey["heating.emitters.present"]?.reviewStatus)
+        XCTAssertNil(room.survey["heating.emitters.present"]?.reviewNotes)
+        XCTAssertNil(room.evidence.first?.reviewStatus)
+        XCTAssertNil(room.evidence.first?.reviewNotes)
     }
 }
