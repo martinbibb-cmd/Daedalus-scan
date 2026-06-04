@@ -83,4 +83,36 @@ final class SurveyModelsTests: XCTestCase {
         XCTAssertEqual(decoded.visits[0].components[0].notes, "Observed in utility area.")
         XCTAssertEqual(decoded.visits[0].components[0].evidence[1].embeddedData, componentTextBytes)
     }
+
+    func testSectionStatusRoundTripThroughVisitPackage() throws {
+        var visit = Visit(reference: "VIS-STATUS", twinKind: .system)
+        visit.sectionStatuses = [
+            .flue: .notAccessible,
+            .cylinder: .present,
+            .feedAndExpansion: .notPresent
+        ]
+        let package = VisitPackage(visits: [visit])
+
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try encoder.encode(package)
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let decoded = try decoder.decode(VisitPackage.self, from: data)
+
+        XCTAssertEqual(decoded.visits[0].sectionStatuses[.flue], .notAccessible)
+        XCTAssertEqual(decoded.visits[0].sectionStatuses[.cylinder], .present)
+        XCTAssertEqual(decoded.visits[0].sectionStatuses[.feedAndExpansion], .notPresent)
+        XCTAssertNil(decoded.visits[0].sectionStatuses[.boiler])
+    }
+
+    func testSectionStatusDecodesFromLegacyVisitWithNoSectionStatuses() throws {
+        // Simulate a Visit encoded without sectionStatuses (legacy format)
+        let json = "[{\"id\":\"00000000-0000-0000-0000-000000000001\",\"reference\":\"VIS-LEGACY\",\"createdAt\":\"2024-01-01T00:00:00Z\",\"twinKind\":\"system\",\"rooms\":[],\"components\":[]}]"
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let visits = try decoder.decode([Visit].self, from: Data(json.utf8))
+        XCTAssertEqual(visits[0].sectionStatuses, [:])
+    }
 }
