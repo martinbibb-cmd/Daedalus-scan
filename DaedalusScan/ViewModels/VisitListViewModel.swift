@@ -166,6 +166,12 @@ final class VisitListViewModel: ObservableObject {
         }
     }
 
+    func setSectionStatus(_ status: SectionStatus, for kind: SystemComponentKind, visitID: UUID) {
+        guard let visitIndex = indexOfVisit(visitID) else { return }
+        visits[visitIndex].sectionStatuses[kind] = status
+        persistChanges()
+    }
+
     func deleteVisit(id: UUID) {
         if let visit = visits.first(where: { $0.id == id }) {
             repository.deleteEvidenceFiles(for: visit)

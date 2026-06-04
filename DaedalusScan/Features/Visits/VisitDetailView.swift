@@ -22,7 +22,17 @@ struct VisitDetailView: View {
 
                 ForEach(SystemComponentKind.canonicalOrder, id: \.id) { kind in
                     let captured = visit.components.filter { $0.kind == kind }
+                    let statusBinding = Binding<SectionStatus>(
+                        get: { visit.sectionStatuses[kind] ?? .notChecked },
+                        set: { viewModel.setSectionStatus($0, for: kind, visitID: visitID) }
+                    )
                     Section(kind.title) {
+                        Picker("Status", selection: statusBinding) {
+                            ForEach(SectionStatus.allCases, id: \.self) { status in
+                                Text(status.title).tag(status)
+                            }
+                        }
+                        .pickerStyle(.menu)
                         ForEach(captured) { component in
                             NavigationLink {
                                 ComponentDetailView(viewModel: viewModel, visitID: visitID, componentID: component.id)

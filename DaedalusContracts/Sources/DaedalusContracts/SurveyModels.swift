@@ -156,10 +156,28 @@ public enum SystemComponentKind: String, Codable, CaseIterable, Identifiable, Se
         .feedAndExpansion,
         .gasMeter,
         .radiator,
-        .pump,
         .pipework,
+        .pump,
         .other
     ]
+}
+
+public enum SectionStatus: String, Codable, CaseIterable, Hashable, Sendable {
+    case notChecked
+    case present
+    case notPresent
+    case unknown
+    case notAccessible
+
+    public var title: String {
+        switch self {
+        case .notChecked: return "Not Checked"
+        case .present: return "Present"
+        case .notPresent: return "Not Present"
+        case .unknown: return "Unknown"
+        case .notAccessible: return "Not Accessible"
+        }
+    }
 }
 
 public struct SystemComponent: Codable, Hashable, Identifiable, Sendable {
@@ -197,6 +215,7 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
     public var twinKind: TwinKind
     public var rooms: [Room]
     public var components: [SystemComponent]
+    public var sectionStatuses: [SystemComponentKind: SectionStatus]
 
     public init(
         id: UUID = UUID(),
@@ -204,7 +223,8 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         createdAt: Date = Date(),
         twinKind: TwinKind,
         rooms: [Room] = [],
-        components: [SystemComponent] = []
+        components: [SystemComponent] = [],
+        sectionStatuses: [SystemComponentKind: SectionStatus] = [:]
     ) {
         self.id = id
         self.reference = reference
@@ -212,6 +232,7 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         self.twinKind = twinKind
         self.rooms = rooms
         self.components = components
+        self.sectionStatuses = sectionStatuses
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -221,6 +242,7 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         case twinKind
         case rooms
         case components
+        case sectionStatuses
     }
 
     public init(from decoder: Decoder) throws {
@@ -231,6 +253,7 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         twinKind = try container.decode(TwinKind.self, forKey: .twinKind)
         rooms = try container.decode([Room].self, forKey: .rooms)
         components = try container.decodeIfPresent([SystemComponent].self, forKey: .components) ?? []
+        sectionStatuses = try container.decodeIfPresent([SystemComponentKind: SectionStatus].self, forKey: .sectionStatuses) ?? [:]
     }
 }
 
