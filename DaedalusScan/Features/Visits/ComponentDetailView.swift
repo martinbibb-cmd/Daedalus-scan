@@ -31,6 +31,31 @@ struct ComponentDetailView: View {
                         }
                     }
 
+                    Section("Review") {
+                        Picker(
+                            "Status",
+                            selection: Binding(
+                                get: { component.reviewStatus },
+                                set: { viewModel.setComponentReviewStatus($0, componentID: componentID, visitID: visitID) }
+                            )
+                        ) {
+                            Text("Not set").tag(Optional<ReviewStatus>.none)
+                            ForEach(ReviewStatus.allCases, id: \.self) { status in
+                                Text(status.title).tag(Optional(status))
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        TextField(
+                            "Review notes",
+                            text: Binding(
+                                get: { component.reviewNotes ?? "" },
+                                set: { viewModel.setComponentReviewNotes($0, componentID: componentID, visitID: visitID) }
+                            ),
+                            axis: .vertical
+                        )
+                        .lineLimit(2...4)
+                    }
+
                     Section("Captured details") {
                         ForEach(component.kind.attributeFields) { field in
                             ComponentAttributeFieldRow(
@@ -49,19 +74,72 @@ struct ComponentDetailView: View {
                                 .foregroundStyle(.secondary)
                         } else {
                             ForEach(component.evidence) { evidence in
-                                HStack {
-                                    Label(
-                                        evidence.kind == .photo ? "Photo" : evidence.kind == .voiceNote ? "Voice Note" : "Text Note",
-                                        systemImage: evidence.kind == .photo ? "camera" : evidence.kind == .voiceNote ? "waveform" : "text.alignleft"
-                                    )
-                                    Spacer()
-                                    Text(evidence.localFileName)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                }
+                                EvidenceReviewRow(
+                                    evidence: evidence,
+                                    onStatusChange: { status in
+                                        viewModel.setComponentEvidenceReviewStatus(
+                                            status,
+                                            evidenceID: evidence.id,
+                                            componentID: componentID,
+                                            visitID: visitID
+                                        )
+                                    },
+                                    onNotesChange: { notes in
+                                        viewModel.setComponentEvidenceReviewNotes(
+                                            notes,
+                                            evidenceID: evidence.id,
+                                            componentID: componentID,
+                                            visitID: visitID
+                                        )
+                                    }
+                                )
                             }
                         }
+                    }
+                }
+
+                private struct EvidenceReviewRow: View {
+                    let evidence: Evidence
+                    let onStatusChange: (ReviewStatus?) -> Void
+                    let onNotesChange: (String) -> Void
+
+                    var body: some View {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Label(
+                                    evidence.kind == .photo ? "Photo" : evidence.kind == .voiceNote ? "Voice Note" : "Text Note",
+                                    systemImage: evidence.kind == .photo ? "camera" : evidence.kind == .voiceNote ? "waveform" : "text.alignleft"
+                                )
+                                Spacer()
+                                Text(evidence.localFileName)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                            Picker(
+                                "Review",
+                                selection: Binding(
+                                    get: { evidence.reviewStatus },
+                                    set: onStatusChange
+                                )
+                            ) {
+                                Text("Not set").tag(Optional<ReviewStatus>.none)
+                                ForEach(ReviewStatus.allCases, id: \.self) { status in
+                                    Text(status.title).tag(Optional(status))
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            TextField(
+                                "Review notes",
+                                text: Binding(
+                                    get: { evidence.reviewNotes ?? "" },
+                                    set: onNotesChange
+                                ),
+                                axis: .vertical
+                            )
+                            .lineLimit(2...3)
+                        }
+                        .padding(.vertical, 4)
                     }
                 }
                 .navigationTitle(component.kind.title)

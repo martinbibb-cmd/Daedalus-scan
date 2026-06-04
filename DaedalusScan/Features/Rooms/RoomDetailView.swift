@@ -15,6 +15,31 @@ struct RoomDetailView: View {
         Group {
             if let room = viewModel.room(visitID: visitID, roomID: roomID) {
                 List {
+                    Section("Review") {
+                        Picker(
+                            "Status",
+                            selection: Binding(
+                                get: { room.reviewStatus },
+                                set: { viewModel.setRoomReviewStatus($0, roomID: roomID, visitID: visitID) }
+                            )
+                        ) {
+                            Text("Not set").tag(Optional<ReviewStatus>.none)
+                            ForEach(ReviewStatus.allCases, id: \.self) { status in
+                                Text(status.title).tag(Optional(status))
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        TextField(
+                            "Review notes",
+                            text: Binding(
+                                get: { room.reviewNotes ?? "" },
+                                set: { viewModel.setRoomReviewNotes($0, roomID: roomID, visitID: visitID) }
+                            ),
+                            axis: .vertical
+                        )
+                        .lineLimit(2...4)
+                    }
+
                     Section("Survey") {
                         ForEach(DaedalusCatalog.defaultSurvey) { question in
                             SurveyQuestionRow(
@@ -22,6 +47,20 @@ struct RoomDetailView: View {
                                 response: viewModel.response(for: question.key, visitID: visitID, roomID: roomID)
                             ) { updatedResponse in
                                 viewModel.updateResponse(updatedResponse, for: question.key, visitID: visitID, roomID: roomID)
+                            } onReviewStatusChange: { status in
+                                viewModel.setSurveyResponseReviewStatus(
+                                    status,
+                                    questionKey: question.key,
+                                    roomID: roomID,
+                                    visitID: visitID
+                                )
+                            } onReviewNotesChange: { notes in
+                                viewModel.setSurveyResponseReviewNotes(
+                                    notes,
+                                    questionKey: question.key,
+                                    roomID: roomID,
+                                    visitID: visitID
+                                )
                             }
                         }
                     }
@@ -32,18 +71,26 @@ struct RoomDetailView: View {
                                 .foregroundStyle(.secondary)
                         } else {
                             ForEach(room.evidence) { evidence in
-                                    HStack {
-                                        Label(
-                                            evidence.kind == .photo ? "Photo" : evidence.kind == .voiceNote ? "Voice Note" : "Text Note",
-                                            systemImage: evidence.kind == .photo ? "camera" : evidence.kind == .voiceNote ? "waveform" : "text.alignleft"
+                                EvidenceReviewRow(
+                                    evidence: evidence,
+                                    onStatusChange: { status in
+                                        viewModel.setRoomEvidenceReviewStatus(
+                                            status,
+                                            evidenceID: evidence.id,
+                                            roomID: roomID,
+                                            visitID: visitID
                                         )
-                                        Spacer()
-                                        Text(evidence.localFileName)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(1)
+                                    },
+                                    onNotesChange: { notes in
+                                        viewModel.setRoomEvidenceReviewNotes(
+                                            notes,
+                                            evidenceID: evidence.id,
+                                            roomID: roomID,
+                                            visitID: visitID
+                                        )
                                     }
-                                }
+                                )
+                            }
                         }
                     }
                 }
@@ -120,6 +167,8 @@ private struct SurveyQuestionRow: View {
     let question: SurveyQuestion
     let response: SurveyResponse
     let onChange: (SurveyResponse) -> Void
+    let onReviewStatusChange: (ReviewStatus?) -> Void
+    let onReviewNotesChange: (String) -> Void
 
     @State private var numericText = ""
 
@@ -164,6 +213,75 @@ private struct SurveyQuestionRow: View {
                 .keyboardType(.numberPad)
                 .textFieldStyle(.roundedBorder)
             }
+
+            Picker(
+                "Review",
+                selection: Binding(
+                    get: { response.reviewStatus },
+                    set: onReviewStatusChange
+                )
+            ) {
+                Text("Not set").tag(Optional<ReviewStatus>.none)
+                ForEach(ReviewStatus.allCases, id: \.self) { status in
+                    Text(status.title).tag(Optional(status))
+                }
+            }
+            .pickerStyle(.menu)
+
+            TextField(
+                "Review notes",
+                text: Binding(
+                    get: { response.reviewNotes ?? "" },
+                    set: onReviewNotesChange
+                ),
+                axis: .vertical
+            )
+            .lineLimit(2...3)
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+private struct EvidenceReviewRow: View {
+    let evidence: Evidence
+    let onStatusChange: (ReviewStatus?) -> Void
+    let onNotesChange: (String) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label(
+                    evidence.kind == .photo ? "Photo" : evidence.kind == .voiceNote ? "Voice Note" : "Text Note",
+                    systemImage: evidence.kind == .photo ? "camera" : evidence.kind == .voiceNote ? "waveform" : "text.alignleft"
+                )
+                Spacer()
+                Text(evidence.localFileName)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Picker(
+                "Review",
+                selection: Binding(
+                    get: { evidence.reviewStatus },
+                    set: onStatusChange
+                )
+            ) {
+                Text("Not set").tag(Optional<ReviewStatus>.none)
+                ForEach(ReviewStatus.allCases, id: \.self) { status in
+                    Text(status.title).tag(Optional(status))
+                }
+            }
+            .pickerStyle(.menu)
+            TextField(
+                "Review notes",
+                text: Binding(
+                    get: { evidence.reviewNotes ?? "" },
+                    set: onNotesChange
+                ),
+                axis: .vertical
+            )
+            .lineLimit(2...3)
         }
         .padding(.vertical, 4)
     }

@@ -45,11 +45,21 @@ public struct SurveyResponse: Codable, Hashable, Sendable {
     public var booleanValue: Bool?
     public var selectedValue: String?
     public var numericValue: Double?
+    public var reviewStatus: ReviewStatus?
+    public var reviewNotes: String?
 
-    public init(booleanValue: Bool? = nil, selectedValue: String? = nil, numericValue: Double? = nil) {
+    public init(
+        booleanValue: Bool? = nil,
+        selectedValue: String? = nil,
+        numericValue: Double? = nil,
+        reviewStatus: ReviewStatus? = nil,
+        reviewNotes: String? = nil
+    ) {
         self.booleanValue = booleanValue
         self.selectedValue = selectedValue
         self.numericValue = numericValue
+        self.reviewStatus = reviewStatus
+        self.reviewNotes = reviewNotes
     }
 
     public func isAnswered(for question: SurveyQuestion) -> Bool {
@@ -60,6 +70,22 @@ public struct SurveyResponse: Codable, Hashable, Sendable {
             return !(selectedValue?.isEmpty ?? true)
         case .numeric:
             return numericValue != nil
+        }
+    }
+}
+
+public enum ReviewStatus: String, Codable, CaseIterable, Hashable, Sendable {
+    case draft
+    case needsReview
+    case confirmed
+    case rejected
+
+    public var title: String {
+        switch self {
+        case .draft: return "Draft"
+        case .needsReview: return "Needs review"
+        case .confirmed: return "Confirmed"
+        case .rejected: return "Rejected"
         }
     }
 }
@@ -75,6 +101,8 @@ public struct Evidence: Codable, Hashable, Identifiable, Sendable {
     public var kind: EvidenceKind
     public var localFileName: String
     public var createdAt: Date
+    public var reviewStatus: ReviewStatus?
+    public var reviewNotes: String?
     /// Embedded file bytes included in an exported VisitPackage to enable round-trip restore.
     /// Nil when stored locally; populated by the exporter and consumed by the importer.
     public var embeddedData: Data?
@@ -84,12 +112,16 @@ public struct Evidence: Codable, Hashable, Identifiable, Sendable {
         kind: EvidenceKind,
         localFileName: String,
         createdAt: Date = Date(),
+        reviewStatus: ReviewStatus? = nil,
+        reviewNotes: String? = nil,
         embeddedData: Data? = nil
     ) {
         self.id = id
         self.kind = kind
         self.localFileName = localFileName
         self.createdAt = createdAt
+        self.reviewStatus = reviewStatus
+        self.reviewNotes = reviewNotes
         self.embeddedData = embeddedData
     }
 }
@@ -97,12 +129,23 @@ public struct Evidence: Codable, Hashable, Identifiable, Sendable {
 public struct Room: Codable, Hashable, Identifiable, Sendable {
     public let id: UUID
     public var name: String
+    public var reviewStatus: ReviewStatus?
+    public var reviewNotes: String?
     public var survey: [String: SurveyResponse]
     public var evidence: [Evidence]
 
-    public init(id: UUID = UUID(), name: String, survey: [String: SurveyResponse] = [:], evidence: [Evidence] = []) {
+    public init(
+        id: UUID = UUID(),
+        name: String,
+        reviewStatus: ReviewStatus? = nil,
+        reviewNotes: String? = nil,
+        survey: [String: SurveyResponse] = [:],
+        evidence: [Evidence] = []
+    ) {
         self.id = id
         self.name = name
+        self.reviewStatus = reviewStatus
+        self.reviewNotes = reviewNotes
         self.survey = survey
         self.evidence = evidence
     }
@@ -295,6 +338,8 @@ public struct SystemComponent: Codable, Hashable, Identifiable, Sendable {
     public var manufacturer: String
     public var model: String
     public var notes: String
+    public var reviewStatus: ReviewStatus?
+    public var reviewNotes: String?
     public var componentAttributes: [String: String]
     public var evidence: [Evidence]
 
@@ -305,6 +350,8 @@ public struct SystemComponent: Codable, Hashable, Identifiable, Sendable {
         manufacturer: String = "",
         model: String = "",
         notes: String = "",
+        reviewStatus: ReviewStatus? = nil,
+        reviewNotes: String? = nil,
         componentAttributes: [String: String] = [:],
         evidence: [Evidence] = []
     ) {
@@ -314,6 +361,8 @@ public struct SystemComponent: Codable, Hashable, Identifiable, Sendable {
         self.manufacturer = manufacturer
         self.model = model
         self.notes = notes
+        self.reviewStatus = reviewStatus
+        self.reviewNotes = reviewNotes
         self.componentAttributes = componentAttributes
         self.evidence = evidence
     }
@@ -325,6 +374,8 @@ public struct SystemComponent: Codable, Hashable, Identifiable, Sendable {
         case manufacturer
         case model
         case notes
+        case reviewStatus
+        case reviewNotes
         case componentAttributes
         case evidence
     }
@@ -337,6 +388,8 @@ public struct SystemComponent: Codable, Hashable, Identifiable, Sendable {
         manufacturer = try container.decode(String.self, forKey: .manufacturer)
         model = try container.decode(String.self, forKey: .model)
         notes = try container.decode(String.self, forKey: .notes)
+        reviewStatus = try container.decodeIfPresent(ReviewStatus.self, forKey: .reviewStatus)
+        reviewNotes = try container.decodeIfPresent(String.self, forKey: .reviewNotes)
         componentAttributes = try container.decodeIfPresent([String: String].self, forKey: .componentAttributes) ?? [:]
         evidence = try container.decodeIfPresent([Evidence].self, forKey: .evidence) ?? []
     }
@@ -349,6 +402,8 @@ public struct SystemComponent: Codable, Hashable, Identifiable, Sendable {
         try container.encode(manufacturer, forKey: .manufacturer)
         try container.encode(model, forKey: .model)
         try container.encode(notes, forKey: .notes)
+        try container.encodeIfPresent(reviewStatus, forKey: .reviewStatus)
+        try container.encodeIfPresent(reviewNotes, forKey: .reviewNotes)
         try container.encode(componentAttributes, forKey: .componentAttributes)
         try container.encode(evidence, forKey: .evidence)
     }
