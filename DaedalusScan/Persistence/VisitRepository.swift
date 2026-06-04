@@ -168,126 +168,6 @@ final class VisitRepository {
             guard !metadata.exportedByApp.isEmpty, !metadata.source.isEmpty else {
                 throw VisitPackageImportError.invalidPackage
             }
-
-            private func loadPackage(from url: URL) throws -> VisitPackage {
-                let scoped = url.startAccessingSecurityScopedResource()
-                defer {
-                    if scoped {
-                        url.stopAccessingSecurityScopedResource()
-                    }
-                }
-
-                let data = try Data(contentsOf: url)
-                return try decoder.decode(VisitPackage.self, from: data)
-            }
-
-            private func restoreEvidence(for visit: Visit, evidenceDirectory: URL) throws -> Visit {
-                let restoredRooms = try visit.rooms.map { room in
-                    let restoredEvidence = try room.evidence.map { try restoreEvidence($0, in: evidenceDirectory) }
-                    return Room(
-                        id: room.id,
-                        name: room.name,
-                        reviewStatus: room.reviewStatus,
-                        reviewNotes: room.reviewNotes,
-                        survey: room.survey,
-                        evidence: restoredEvidence
-                    )
-                }
-
-                let restoredComponents = try visit.components.map { component in
-                    let restoredEvidence = try component.evidence.map { try restoreEvidence($0, in: evidenceDirectory) }
-                    return SystemComponent(
-                        id: component.id,
-                        kind: component.kind,
-                        name: component.name,
-                        manufacturer: component.manufacturer,
-                        model: component.model,
-                        notes: component.notes,
-                        reviewStatus: component.reviewStatus,
-                        reviewNotes: component.reviewNotes,
-                        componentAttributes: component.componentAttributes,
-                        evidence: restoredEvidence
-                    )
-                }
-
-                return Visit(
-                    id: visit.id,
-                    reference: visit.reference,
-                    createdAt: visit.createdAt,
-                    twinKind: visit.twinKind,
-                    rooms: restoredRooms,
-                    components: restoredComponents,
-                    sectionStatuses: visit.sectionStatuses
-                )
-            }
-
-            private func restoreEvidence(_ evidence: Evidence, in evidenceDirectory: URL) throws -> Evidence {
-                var restored = evidence
-                if let bytes = evidence.embeddedData {
-                    let fileName = uniqueEvidenceFileName(preferred: evidence.localFileName, in: evidenceDirectory)
-                    let fileURL = evidenceDirectory.appendingPathComponent(fileName)
-                    try bytes.write(to: fileURL, options: .atomic)
-                    restored.localFileName = fileName
-                }
-                restored.embeddedData = nil
-                return restored
-            }
-
-            private func uniqueEvidenceFileName(preferred: String, in evidenceDirectory: URL) -> String {
-                let fallback = UUID().uuidString
-                let preferredName = URL(fileURLWithPath: preferred).lastPathComponent
-                var candidate = preferredName.isEmpty ? fallback : preferredName
-
-                let extensionPart = URL(fileURLWithPath: candidate).pathExtension
-                let baseName = URL(fileURLWithPath: candidate).deletingPathExtension().lastPathComponent
-                var suffix = 2
-
-                while fileManager.fileExists(atPath: evidenceDirectory.appendingPathComponent(candidate).path) {
-                    if extensionPart.isEmpty {
-                        candidate = "\(baseName)-\(suffix)"
-                    } else {
-                        candidate = "\(baseName)-\(suffix).\(extensionPart)"
-                    }
-                    suffix += 1
-                }
-
-                return candidate
-            }
-
-            private func makeUniqueVisitID(excluding ids: Set<UUID>) -> UUID {
-                var candidate = UUID()
-                while ids.contains(candidate) {
-                    candidate = UUID()
-                }
-                return candidate
-            }
-
-            private func makeImportedReference(base: String, reservedReferences: Set<String>) -> String {
-                guard reservedReferences.contains(base) else {
-                    return base
-                }
-
-                let suffix = "Imported copy"
-                var candidate = "\(base) (\(suffix))"
-                var count = 2
-                while reservedReferences.contains(candidate) {
-                    candidate = "\(base) (\(suffix) \(count))"
-                    count += 1
-                }
-                return candidate
-            }
-
-            private func makeVisitCopy(from visit: Visit, id: UUID, reference: String) -> Visit {
-                Visit(
-                    id: id,
-                    reference: reference,
-                    createdAt: visit.createdAt,
-                    twinKind: visit.twinKind,
-                    rooms: visit.rooms,
-                    components: visit.components,
-                    sectionStatuses: visit.sectionStatuses
-                )
-            }
         }
 
         let schemaVersion = package.metadata?.schemaVersion ?? package.schemaVersion
@@ -297,6 +177,126 @@ final class VisitRepository {
         guard schemaVersion <= Self.supportedSchemaVersion else {
             throw VisitPackageImportError.unsupportedSchemaVersion(schemaVersion)
         }
+    }
+
+    private func loadPackage(from url: URL) throws -> VisitPackage {
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer {
+            if scoped {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        let data = try Data(contentsOf: url)
+        return try decoder.decode(VisitPackage.self, from: data)
+    }
+
+    private func restoreEvidence(for visit: Visit, evidenceDirectory: URL) throws -> Visit {
+        let restoredRooms = try visit.rooms.map { room in
+            let restoredEvidence = try room.evidence.map { try restoreEvidence($0, in: evidenceDirectory) }
+            return Room(
+                id: room.id,
+                name: room.name,
+                reviewStatus: room.reviewStatus,
+                reviewNotes: room.reviewNotes,
+                survey: room.survey,
+                evidence: restoredEvidence
+            )
+        }
+
+        let restoredComponents = try visit.components.map { component in
+            let restoredEvidence = try component.evidence.map { try restoreEvidence($0, in: evidenceDirectory) }
+            return SystemComponent(
+                id: component.id,
+                kind: component.kind,
+                name: component.name,
+                manufacturer: component.manufacturer,
+                model: component.model,
+                notes: component.notes,
+                reviewStatus: component.reviewStatus,
+                reviewNotes: component.reviewNotes,
+                componentAttributes: component.componentAttributes,
+                evidence: restoredEvidence
+            )
+        }
+
+        return Visit(
+            id: visit.id,
+            reference: visit.reference,
+            createdAt: visit.createdAt,
+            twinKind: visit.twinKind,
+            rooms: restoredRooms,
+            components: restoredComponents,
+            sectionStatuses: visit.sectionStatuses
+        )
+    }
+
+    private func restoreEvidence(_ evidence: Evidence, in evidenceDirectory: URL) throws -> Evidence {
+        var restored = evidence
+        if let bytes = evidence.embeddedData {
+            let fileName = uniqueEvidenceFileName(preferred: evidence.localFileName, in: evidenceDirectory)
+            let fileURL = evidenceDirectory.appendingPathComponent(fileName)
+            try bytes.write(to: fileURL, options: .atomic)
+            restored.localFileName = fileName
+        }
+        restored.embeddedData = nil
+        return restored
+    }
+
+    private func uniqueEvidenceFileName(preferred: String, in evidenceDirectory: URL) -> String {
+        let fallback = UUID().uuidString
+        let preferredName = URL(fileURLWithPath: preferred).lastPathComponent
+        var candidate = preferredName.isEmpty ? fallback : preferredName
+
+        let extensionPart = URL(fileURLWithPath: candidate).pathExtension
+        let baseName = URL(fileURLWithPath: candidate).deletingPathExtension().lastPathComponent
+        var suffix = 2
+
+        while fileManager.fileExists(atPath: evidenceDirectory.appendingPathComponent(candidate).path) {
+            if extensionPart.isEmpty {
+                candidate = "\(baseName)-\(suffix)"
+            } else {
+                candidate = "\(baseName)-\(suffix).\(extensionPart)"
+            }
+            suffix += 1
+        }
+
+        return candidate
+    }
+
+    private func makeUniqueVisitID(excluding ids: Set<UUID>) -> UUID {
+        var candidate = UUID()
+        while ids.contains(candidate) {
+            candidate = UUID()
+        }
+        return candidate
+    }
+
+    private func makeImportedReference(base: String, reservedReferences: Set<String>) -> String {
+        guard reservedReferences.contains(base) else {
+            return base
+        }
+
+        let suffix = "Imported copy"
+        var candidate = "\(base) (\(suffix))"
+        var count = 2
+        while reservedReferences.contains(candidate) {
+            candidate = "\(base) (\(suffix) \(count))"
+            count += 1
+        }
+        return candidate
+    }
+
+    private func makeVisitCopy(from visit: Visit, id: UUID, reference: String) -> Visit {
+        Visit(
+            id: id,
+            reference: reference,
+            createdAt: visit.createdAt,
+            twinKind: visit.twinKind,
+            rooms: visit.rooms,
+            components: visit.components,
+            sectionStatuses: visit.sectionStatuses
+        )
     }
 
     func deleteEvidenceFiles(for visit: Visit) {
