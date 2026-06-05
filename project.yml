@@ -39,6 +39,7 @@ targets:
         NSCameraUsageDescription: Daedalus Scan captures room evidence photos.
         NSPhotoLibraryUsageDescription: Daedalus Scan stores captured visit evidence.
         NSMicrophoneUsageDescription: Daedalus Scan records voice note evidence.
+        LSSupportsOpeningDocumentsInPlace: false
         UILaunchScreen: {}
         CFBundleDocumentTypes:
           - CFBundleTypeName: Daedalus Scan Package

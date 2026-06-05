@@ -29,14 +29,14 @@ struct VisitImportConflict {
 }
 
 @MainActor
-final class VisitRepository {
+public final class VisitRepository {
     private static let supportedSchemaVersion = VisitPackageMetadata.currentSchemaVersion
 
     private let fileManager: FileManager
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
 
-    init(fileManager: FileManager = .default) {
+    public init(fileManager: FileManager = .default) {
         self.fileManager = fileManager
 
         let encoder = JSONEncoder()

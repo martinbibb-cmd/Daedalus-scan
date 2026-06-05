@@ -3,7 +3,7 @@ import DaedalusContracts
 import Foundation
 
 @MainActor
-final class VisitListViewModel: ObservableObject {
+public final class VisitListViewModel: ObservableObject {
     struct PendingImportConflict {
         let sourceURL: URL
         let conflictCount: Int
@@ -17,7 +17,7 @@ final class VisitListViewModel: ObservableObject {
 
     private let repository: VisitRepository
 
-    init(repository: VisitRepository) {
+    public init(repository: VisitRepository) {
         self.repository = repository
         loadVisits()
     }
