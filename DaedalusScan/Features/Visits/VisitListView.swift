@@ -26,7 +26,7 @@ public struct VisitListView: View {
         }
     }
 
-    var body: some View {
+    public var body: some View {
         NavigationStack {
             List {
                 if viewModel.visits.isEmpty {
