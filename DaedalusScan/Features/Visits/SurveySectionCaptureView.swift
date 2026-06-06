@@ -3,369 +3,560 @@ import SwiftUI
 struct SurveySectionCaptureView: View {
     @ObservedObject var viewModel: VisitListViewModel
     let visitID: UUID
-    @Binding var selectedKind: SystemComponentKind
-    let sections: [CaptureSection]
 
     @StateObject private var recorder = VoiceNoteRecorder()
+
+    @State private var selectedTargetIndex = 0
+    @State private var selectedRoomID: UUID?
+
+    @State private var pendingCaptureDestination: CaptureDestination?
+    @State private var annotationDestination: CaptureDestination?
+    @State private var annotationText = ""
+
     @State private var isPresentingCamera = false
-    @State private var isPresentingTextNote = false
-    @State private var isPresentingStatusDialog = false
-    @State private var isPresentingAdvancedDetails = false
-    @State private var textNoteContent = ""
-    @State private var activeComponentID: UUID?
+    @State private var isPresentingAnnotation = false
+    @State private var isShowingTargetWheel = false
+    @State private var isShowingProgressDrawer = false
+
+    @State private var didLongPressRecord = false
+    @State private var isNarrativeCaptureActive = false
+    @State private var didAutoLaunchCamera = false
+
+    @State private var componentEditorID: UUID?
+    @State private var roomEditorID: UUID?
+    @State private var isPresentingComponentEditor = false
+    @State private var isPresentingRoomEditor = false
+
+    private static let primaryTargets: [CaptureTarget] = [
+        .boiler,
+        .flue,
+        .controls,
+        .cylinder,
+        .meter,
+        .radiator,
+        .room,
+        .general
+    ]
 
     private var visit: Visit? {
         viewModel.visit(id: visitID)
     }
 
-    private var components: [SystemComponent] {
-        guard let visit else { return [] }
-        return visit.components.filter { $0.kind == selectedKind && $0.captureMode == visit.captureMode }
+    private var selectedTarget: CaptureTarget {
+        let index = min(max(selectedTargetIndex, 0), Self.primaryTargets.count - 1)
+        return Self.primaryTargets[index]
     }
 
-    private var evidenceCount: Int {
-        components.reduce(0) { $0 + $1.evidence.count }
-    }
-
-    private var sectionStatus: SectionStatus {
-        guard let visit else { return .notChecked }
-        if visit.captureMode == .current {
-            return visit.sectionStatuses[selectedKind] ?? .notChecked
+    private var selectedRoomName: String {
+        guard let visit,
+              let room = visit.rooms.first(where: { $0.id == selectedRoomID }) else {
+            return "Unassigned"
         }
-        return visit.proposedSectionStatuses[selectedKind] ?? .notChecked
-    }
-
-    private var statusBinding: Binding<SectionStatus> {
-        Binding<SectionStatus>(
-            get: { sectionStatus },
-            set: { viewModel.setSectionStatus($0, for: selectedKind, visitID: visitID) }
-        )
-    }
-
-    private var reviewLaterBinding: Binding<Bool> {
-        Binding<Bool>(
-            get: { components.contains(where: { $0.reviewStatus == .needsReview }) },
-            set: { viewModel.setSectionReviewLater($0, for: selectedKind, visitID: visitID) }
-        )
+        return room.name
     }
 
     var body: some View {
         Group {
             if visit != nil {
-                cockpitContent
+                captureShell
             } else {
-                Text("Section not found")
-                    .foregroundStyle(.secondary)
+                ContentUnavailableView("Visit not found", systemImage: "exclamationmark.triangle")
             }
         }
-    }
-
-    // MARK: - Camera-first layout
-
-    private var cockpitContent: some View {
-        ZStack(alignment: .top) {
-            // Layer 0: full-screen live camera surface
-            LiveCameraPreviewView()
-                .ignoresSafeArea()
-                .onTapGesture {
-                    activeComponentID = viewModel.ensureComponent(for: selectedKind, visitID: visitID)
-                    if activeComponentID != nil { isPresentingCamera = true }
-                }
-
-            // Layer 1: top compact overlay (section chips + status badge)
-            topOverlay
-
-            // Layer 2: bottom scrim + radial actions overlaid on camera
-            VStack(spacing: 0) {
-                Spacer(minLength: 0)
-                bottomOverlay
-            }
-        }
-        .ignoresSafeArea(edges: .bottom)
-        .navigationTitle("Capture")
         .navigationBarTitleDisplayMode(.inline)
-        .sheet(isPresented: $isPresentingCamera) {
+        .navigationDestination(isPresented: $isPresentingComponentEditor) {
+            if let componentEditorID {
+                ComponentDetailView(viewModel: viewModel, visitID: visitID, componentID: componentEditorID)
+            }
+        }
+        .navigationDestination(isPresented: $isPresentingRoomEditor) {
+            if let roomEditorID {
+                RoomDetailView(viewModel: viewModel, visitID: visitID, roomID: roomEditorID)
+            }
+        }
+        .fullScreenCover(isPresented: $isPresentingCamera) {
             CameraCaptureView { imageData in
-                if let componentID = activeComponentID ?? viewModel.ensureComponent(for: selectedKind, visitID: visitID) {
-                    viewModel.attachPhoto(data: imageData, toComponent: componentID, in: visitID)
+                guard let destination = pendingCaptureDestination else { return }
+                attachPhoto(imageData, to: destination)
+                annotationDestination = destination
+                annotationText = ""
+                isPresentingAnnotation = true
+                pendingCaptureDestination = nil
+            }
+            .ignoresSafeArea()
+        }
+        .sheet(isPresented: $isPresentingAnnotation) {
+            CaptureAnnotationSheet(
+                targetLabel: selectedTarget.displayName,
+                locationLabel: selectedRoomName,
+                text: $annotationText,
+                isRecording: recorder.isRecording,
+                onToggleVoice: toggleAnnotationVoice,
+                onSaveText: saveAnnotationText,
+                onDone: {
+                    if recorder.isRecording {
+                        _ = stopAnnotationVoiceAndAttach()
+                    }
+                    isPresentingAnnotation = false
+                    annotationDestination = nil
+                    annotationText = ""
                 }
+            )
+            .presentationDetents([.medium])
+        }
+        .sheet(isPresented: $isShowingTargetWheel) {
+            targetWheelSheet
+        }
+        .sheet(isPresented: $isShowingProgressDrawer) {
+            progressDrawerSheet
+        }
+        .onAppear {
+            syncSelectedRoom()
+            if !didAutoLaunchCamera {
+                didAutoLaunchCamera = true
+                launchPhotoCapture()
             }
         }
-        .sheet(isPresented: $isPresentingTextNote) {
-            SurveySectionTextNoteSheet(text: $textNoteContent) {
-                if let componentID = activeComponentID ?? viewModel.ensureComponent(for: selectedKind, visitID: visitID) {
-                    viewModel.attachTextNoteToComponent(text: textNoteContent, to: componentID, in: visitID)
-                }
-            }
-        }
-        .sheet(isPresented: $isPresentingAdvancedDetails) {
-            advancedDetailsSheet
-        }
-        .confirmationDialog("Set Section Status", isPresented: $isPresentingStatusDialog) {
-            ForEach(SectionStatus.allCases, id: \.self) { status in
-                Button(status.title) {
-                    statusBinding.wrappedValue = status
-                }
-            }
-            Button("Cancel", role: .cancel) {}
+        .onChange(of: visit?.rooms.map(\.id) ?? []) { _, _ in
+            syncSelectedRoom()
         }
         .onChange(of: recorder.errorMessage) { _, newValue in
-            if let newValue { viewModel.errorMessage = newValue }
+            if let newValue {
+                viewModel.errorMessage = newValue
+            }
         }
         .onDisappear {
-            if recorder.isRecording { _ = recorder.stopRecording() }
+            if recorder.isRecording {
+                _ = recorder.stopRecording()
+            }
         }
     }
 
-    // MARK: - Top overlay
+    private var captureShell: some View {
+        ZStack {
+            Rectangle()
+                .fill(.black)
+                .ignoresSafeArea()
 
-    private var topOverlay: some View {
-        VStack(spacing: 0) {
-            statusBadge
-            compactSectionSelector
+            VStack(spacing: 0) {
+                topOverlay
+                Spacer()
+                bottomOverlay
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 18)
         }
-        .background(
-            LinearGradient(
-                colors: [.black.opacity(0.55), .clear],
-                startPoint: .top,
-                endPoint: .bottom
-            )
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 24)
+                .onEnded(handleSwipe)
         )
     }
 
-    private var statusBadge: some View {
-        HStack(spacing: 6) {
-            Text(selectedKind.surveyTitle)
-                .font(.caption.weight(.bold))
-            Circle()
-                .fill(sectionStatus.indicatorColor)
-                .frame(width: 7, height: 7)
-            Text(sectionStatus.title)
+    private var topOverlay: some View {
+        VStack(spacing: 8) {
+            Text(selectedTarget.displayName)
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(Color.white.opacity(0.18))
+                .clipShape(Capsule())
+
+            Text("Location: \(selectedRoomName)")
                 .font(.caption)
-            if evidenceCount > 0 {
-                Label("\(evidenceCount)", systemImage: "camera.fill")
-                    .font(.caption)
-                    .padding(.leading, 4)
-            }
-            Spacer()
-            Button {
-                isPresentingAdvancedDetails = true
-            } label: {
-                Image(systemName: "ellipsis.circle")
-                    .font(.subheadline)
-            }
-        }
-        .foregroundStyle(.white)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 6)
-    }
-
-    private var compactSectionSelector: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                ForEach(sections, id: \.kind.id) { section in
-                    Button {
-                        selectedKind = section.kind
-                    } label: {
-                        HStack(spacing: 4) {
-                            Text(section.kind.surveyTitle)
-                                .font(.caption2.weight(.semibold))
-                            if section.isRequired {
-                                Circle()
-                                    .frame(width: 5, height: 5)
-                            }
-                        }
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 5)
-                        .foregroundStyle(selectedKind == section.kind ? .white : .white.opacity(0.75))
-                        .background(
-                            selectedKind == section.kind
-                                ? Color.accentColor
-                                : Color.white.opacity(0.15)
-                        )
-                        .clipShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 4)
+                .foregroundStyle(.white.opacity(0.82))
         }
     }
-
-    // MARK: - Bottom overlay
 
     private var bottomOverlay: some View {
-        ZStack {
-            LinearGradient(
-                colors: [.clear, .black.opacity(0.65)],
-                startPoint: .top,
-                endPoint: .bottom
+        VStack(spacing: 14) {
+            Text("Swipe ←/→ target  •  Swipe ↑ type wheel  •  Swipe ↓ progress")
+                .font(.caption2)
+                .foregroundStyle(.white.opacity(0.72))
+
+            Button(action: {
+                if didLongPressRecord {
+                    didLongPressRecord = false
+                    return
+                }
+                launchPhotoCapture()
+            }) {
+                Circle()
+                    .strokeBorder(Color.white, lineWidth: 4)
+                    .background(Circle().fill(Color.white.opacity(0.14)))
+                    .frame(width: 88, height: 88)
+                    .overlay(
+                        Circle()
+                            .fill(Color.white)
+                            .frame(width: 66, height: 66)
+                    )
+            }
+            .simultaneousGesture(
+                LongPressGesture(minimumDuration: 0.35)
+                    .onChanged { _ in
+                        beginNarrativeCaptureIfNeeded()
+                    }
+                    .onEnded { _ in
+                        completeNarrativeCaptureIfNeeded()
+                    }
             )
-            arcQuickActions
-                .padding(.bottom, 8)
-        }
-        .frame(height: 172)
-    }
+            .buttonStyle(.plain)
 
-    // MARK: - Arc quick actions
-    // Buttons fan symmetrically upward from the bottom-centre anchor.
-    // Angles are distributed around −90° (straight up) so all buttons
-    // remain within the container bounds.
-    private var arcQuickActions: some View {
-        GeometryReader { geometry in
-            let arcAngles: [Double] = [-160, -125, -90, -55, -20]
-            let labels = [
-                ("Photo", "camera.fill"),
-                (recorder.isRecording ? "Stop" : "Voice", recorder.isRecording ? "stop.fill" : "waveform"),
-                ("Text", "text.bubble.fill"),
-                ("Status", "checkmark.seal.fill"),
-                (reviewLaterBinding.wrappedValue ? "Reviewed" : "Review", "clock.badge.questionmark")
-            ]
-            let radius = min(geometry.size.width * 0.38, 108.0)
-
-            ZStack {
-                ForEach(Array(labels.enumerated()), id: \.offset) { index, item in
-                    let angle = Angle(degrees: arcAngles[index])
-                    let x = geometry.size.width / 2 + CGFloat(cos(angle.radians)) * radius
-                    let y = geometry.size.height + CGFloat(sin(angle.radians)) * radius
-
-                    Button {
-                        handleQuickAction(index)
-                    } label: {
-                        VStack(spacing: 4) {
-                            Image(systemName: item.1)
-                                .font(.headline)
-                            Text(item.0)
-                                .font(.caption2)
-                        }
-                        .foregroundStyle(.white)
-                        .frame(width: 56, height: 56)
-                        .background(
-                            recorder.isRecording && index == 1
-                                ? Color.red
-                                : Color.accentColor
-                        )
-                        .clipShape(Circle())
-                        .shadow(color: .black.opacity(0.35), radius: 4, y: 2)
-                    }
-                    .buttonStyle(.plain)
-                    .position(x: x, y: y)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            Text(isNarrativeCaptureActive ? "Recording narrative… release to save" : "Tap: photo  •  Hold: narrative (voice fallback)")
+                .font(.caption)
+                .foregroundStyle(.white.opacity(0.86))
         }
     }
 
-    // MARK: - Advanced details sheet
-
-    private var advancedDetailsSheet: some View {
+    private var targetWheelSheet: some View {
         NavigationStack {
-            List {
-                if components.isEmpty {
-                    Text("No section components yet.")
-                        .foregroundStyle(.secondary)
-                }
-                ForEach(Array(components.enumerated()), id: \.element.id) { index, component in
-                    NavigationLink("Component \(index + 1)") {
-                        ComponentDetailView(viewModel: viewModel, visitID: visitID, componentID: component.id)
+            VStack(spacing: 18) {
+                Picker("Capture target", selection: $selectedTargetIndex) {
+                    ForEach(Array(Self.primaryTargets.enumerated()), id: \.offset) { index, target in
+                        Text(target.displayName).tag(index)
                     }
                 }
-                Button("Add Another \(selectedKind.surveyTitle)") {
-                    viewModel.addComponent(to: visitID, kind: selectedKind, name: "", manufacturer: "", model: "", notes: "")
+                .pickerStyle(.wheel)
+
+                Button("Use Target") {
+                    isShowingTargetWheel = false
                 }
+                .buttonStyle(.borderedProminent)
             }
-            .navigationTitle("\(selectedKind.surveyTitle) Details")
+            .padding()
+            .navigationTitle("Object / Type")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { isPresentingAdvancedDetails = false }
+        }
+    }
+
+    private var progressDrawerSheet: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 16) {
+                List {
+                    Section("Capture Progress") {
+                        ForEach(Self.primaryTargets) { target in
+                            HStack {
+                                Text(target.displayName)
+                                Spacer()
+                                Text("\(evidenceCount(for: target))")
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+
+                    Section("Current Context") {
+                        HStack {
+                            Text("Target")
+                            Spacer()
+                            Text(selectedTarget.displayName)
+                                .foregroundStyle(.secondary)
+                        }
+                        HStack {
+                            Text("Location")
+                            Spacer()
+                            Text(selectedRoomName)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
+
+                Button("Review Selected Target") {
+                    isShowingProgressDrawer = false
+                    openSelectedTargetEditor()
+                }
+                .buttonStyle(.borderedProminent)
+                .padding(.horizontal)
+                .padding(.bottom, 10)
+            }
+            .navigationTitle("Progress")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+
+    private func handleSwipe(_ value: DragGesture.Value) {
+        let width = value.translation.width
+        let height = value.translation.height
+
+        if abs(width) > abs(height), abs(width) > 36 {
+            if width < 0 {
+                selectedTargetIndex = min(selectedTargetIndex + 1, Self.primaryTargets.count - 1)
+            } else {
+                selectedTargetIndex = max(selectedTargetIndex - 1, 0)
+            }
+            return
+        }
+
+        if abs(height) > abs(width), abs(height) > 42 {
+            if height < 0 {
+                isShowingTargetWheel = true
+            } else {
+                isShowingProgressDrawer = true
             }
         }
     }
 
-    // MARK: - Actions
+    private func syncSelectedRoom() {
+        guard let visit else {
+            selectedRoomID = nil
+            return
+        }
+        if let selectedRoomID,
+           visit.rooms.contains(where: { $0.id == selectedRoomID }) {
+            return
+        }
+        selectedRoomID = visit.rooms.first?.id
+    }
 
-    private func handleQuickAction(_ index: Int) {
-        switch index {
-        case 0:
-            activeComponentID = viewModel.ensureComponent(for: selectedKind, visitID: visitID)
-            if activeComponentID != nil { isPresentingCamera = true }
-        case 1:
-            toggleVoiceRecording()
-        case 2:
-            activeComponentID = viewModel.ensureComponent(for: selectedKind, visitID: visitID)
-            if activeComponentID != nil {
-                textNoteContent = ""
-                isPresentingTextNote = true
-            }
-        case 3:
-            isPresentingStatusDialog = true
-        case 4:
-            reviewLaterBinding.wrappedValue.toggle()
+    private func resolveCaptureDestination() -> CaptureDestination? {
+        switch selectedTarget {
+        case .room:
+            guard let roomID = selectedRoomID else { return nil }
+            return .room(roomID)
         default:
-            break
-        }
-    }
-
-    private func toggleVoiceRecording() {
-        if recorder.isRecording {
-            if let componentID = activeComponentID, let url = recorder.stopRecording() {
-                viewModel.attachVoiceNoteToComponent(from: url, to: componentID, in: visitID)
+            guard let kind = selectedTarget.componentKind,
+                  let componentID = viewModel.ensureComponent(for: kind, visitID: visitID) else {
+                return nil
             }
-            activeComponentID = nil
+            applyLocationContextIfAvailable(toComponent: componentID)
+            return .component(componentID)
+        }
+    }
+
+    private func launchPhotoCapture() {
+        guard let destination = resolveCaptureDestination() else { return }
+        pendingCaptureDestination = destination
+        isPresentingCamera = true
+    }
+
+    private func beginNarrativeCaptureIfNeeded() {
+        guard !isNarrativeCaptureActive,
+              !recorder.isRecording,
+              let destination = resolveCaptureDestination() else { return }
+
+        guard let voiceURL = voiceURL(for: destination) else { return }
+        annotationDestination = destination
+        didLongPressRecord = true
+        isNarrativeCaptureActive = true
+        recorder.startRecording(to: voiceURL)
+    }
+
+    private func completeNarrativeCaptureIfNeeded() {
+        guard isNarrativeCaptureActive else { return }
+        isNarrativeCaptureActive = false
+
+        guard recorder.isRecording,
+              let destination = annotationDestination,
+              let voiceURL = recorder.stopRecording() else {
+            annotationDestination = nil
             return
         }
 
-        guard let componentID = viewModel.ensureComponent(for: selectedKind, visitID: visitID),
-              let url = viewModel.prepareComponentVoiceNoteURL(for: componentID, in: visitID) else {
+        attachVoice(url: voiceURL, to: destination)
+        isPresentingAnnotation = true
+        annotationText = ""
+    }
+
+    private func toggleAnnotationVoice() {
+        guard let destination = annotationDestination else { return }
+        if recorder.isRecording {
+            _ = stopAnnotationVoiceAndAttach()
             return
         }
-        activeComponentID = componentID
-        recorder.startRecording(to: url)
+        guard let voiceURL = voiceURL(for: destination) else { return }
+        recorder.startRecording(to: voiceURL)
+    }
+
+    private func stopAnnotationVoiceAndAttach() -> Bool {
+        guard recorder.isRecording,
+              let destination = annotationDestination,
+              let voiceURL = recorder.stopRecording() else {
+            return false
+        }
+        attachVoice(url: voiceURL, to: destination)
+        return true
+    }
+
+    private func saveAnnotationText() {
+        guard let destination = annotationDestination else { return }
+        let trimmed = annotationText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        switch destination {
+        case let .room(roomID):
+            viewModel.attachTextNote(text: trimmed, to: roomID, in: visitID)
+        case let .component(componentID):
+            viewModel.attachTextNoteToComponent(text: trimmed, to: componentID, in: visitID)
+        }
+
+        annotationText = ""
+    }
+
+    private func voiceURL(for destination: CaptureDestination) -> URL? {
+        switch destination {
+        case let .room(roomID):
+            return viewModel.prepareRoomVoiceNoteURL(for: roomID, in: visitID)
+        case let .component(componentID):
+            return viewModel.prepareComponentVoiceNoteURL(for: componentID, in: visitID)
+        }
+    }
+
+    private func attachPhoto(_ data: Data, to destination: CaptureDestination) {
+        switch destination {
+        case let .room(roomID):
+            viewModel.attachPhoto(data: data, to: roomID, in: visitID)
+        case let .component(componentID):
+            viewModel.attachPhoto(data: data, toComponent: componentID, in: visitID)
+        }
+    }
+
+    private func attachVoice(url: URL, to destination: CaptureDestination) {
+        switch destination {
+        case let .room(roomID):
+            viewModel.attachVoiceNoteToRoom(from: url, to: roomID, in: visitID)
+        case let .component(componentID):
+            viewModel.attachVoiceNoteToComponent(from: url, to: componentID, in: visitID)
+        }
+    }
+
+    private func evidenceCount(for target: CaptureTarget) -> Int {
+        guard let visit else { return 0 }
+        if target == .room {
+            if let selectedRoomID,
+               let room = visit.rooms.first(where: { $0.id == selectedRoomID }) {
+                return room.evidence.count
+            }
+            return visit.rooms.reduce(0) { $0 + $1.evidence.count }
+        }
+        guard let kind = target.componentKind else { return 0 }
+        return visit.components
+            .filter { $0.kind == kind && $0.captureMode == visit.captureMode }
+            .reduce(0) { $0 + $1.evidence.count }
+    }
+
+    private func applyLocationContextIfAvailable(toComponent componentID: UUID) {
+        guard let visit,
+              let roomID = selectedRoomID,
+              let room = visit.rooms.first(where: { $0.id == roomID }) else {
+            return
+        }
+        viewModel.updateComponentAttribute(room.name, for: "location", componentID: componentID, visitID: visitID)
+    }
+
+    private func openSelectedTargetEditor() {
+        switch selectedTarget {
+        case .room:
+            if let roomID = selectedRoomID {
+                roomEditorID = roomID
+                isPresentingRoomEditor = true
+            }
+        default:
+            guard let kind = selectedTarget.componentKind,
+                  let componentID = viewModel.ensureComponent(for: kind, visitID: visitID) else {
+                return
+            }
+            componentEditorID = componentID
+            isPresentingComponentEditor = true
+        }
     }
 }
 
-// MARK: - SectionStatus UI helpers
+private enum CaptureTarget: String, CaseIterable, Identifiable {
+    case boiler
+    case flue
+    case controls
+    case cylinder
+    case meter
+    case radiator
+    case room
+    case general
 
-private extension SectionStatus {
-    var indicatorColor: Color {
+    var id: String { rawValue }
+
+    var displayName: String {
         switch self {
-        case .notChecked:    return .gray
-        case .present:       return .green
-        case .notPresent:    return .orange
-        case .unknown:       return .yellow
-        case .notAccessible: return .red
+        case .boiler: return "Boiler"
+        case .flue: return "Flue"
+        case .controls: return "Controls"
+        case .cylinder: return "Cylinder"
+        case .meter: return "Meter"
+        case .radiator: return "Radiator"
+        case .room: return "Room"
+        case .general: return "General"
+        }
+    }
+
+    var componentKind: SystemComponentKind? {
+        switch self {
+        case .boiler: return .boiler
+        case .flue: return .flue
+        case .controls: return .controls
+        case .cylinder: return .cylinder
+        case .meter: return .gasMeter
+        case .radiator: return .radiator
+        case .general: return .other
+        case .room: return nil
         }
     }
 }
 
-// MARK: - Text note sheet
+private enum CaptureDestination {
+    case room(UUID)
+    case component(UUID)
+}
 
-private struct SurveySectionTextNoteSheet: View {
-    @Environment(\.dismiss) private var dismiss
+private struct CaptureAnnotationSheet: View {
+    let targetLabel: String
+    let locationLabel: String
     @Binding var text: String
-    let onSave: () -> Void
+    let isRecording: Bool
+    let onToggleVoice: () -> Void
+    let onSaveText: () -> Void
+    let onDone: () -> Void
 
     var body: some View {
         NavigationStack {
-            TextEditor(text: $text)
-                .padding()
-                .navigationTitle("Text Note")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Cancel") { dismiss() }
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Annotate \(targetLabel)")
+                    .font(.headline)
+                Text("Location: \(locationLabel)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                TextEditor(text: $text)
+                    .frame(minHeight: 120)
+                    .padding(8)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color.secondary.opacity(0.25), lineWidth: 1)
+                    )
+
+                HStack(spacing: 10) {
+                    Button(isRecording ? "Stop Voice" : "Record Voice") {
+                        onToggleVoice()
                     }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Save") {
-                            onSave()
-                            dismiss()
-                        }
-                        .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .buttonStyle(.bordered)
+
+                    Button("Save Text") {
+                        onSaveText()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+
+                Spacer()
+            }
+            .padding()
+            .navigationTitle("Annotation")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        onDone()
                     }
                 }
+            }
         }
     }
 }
