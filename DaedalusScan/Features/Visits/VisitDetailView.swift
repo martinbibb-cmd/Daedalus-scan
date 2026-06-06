@@ -7,28 +7,23 @@ struct VisitDetailView: View {
     @State private var isPresentingRoomAlert = false
     @State private var isPresentingSummary = false
     @State private var isPresentingShareSheet = false
-    @State private var isPresentingSections = false
+    @State private var isPresentingContext = false
     @State private var isPresentingRooms = false
+
     @State private var shareURL: URL?
     @State private var roomName = ""
-    @State private var selectedSectionKind: SystemComponentKind = .boiler
 
     var body: some View {
         if let visit = viewModel.visit(id: visitID) {
-            let sections = viewModel.sectionList(for: visitID)
-            let sectionKinds = sections.map(\.kind)
-
             SurveySectionCaptureView(
                 viewModel: viewModel,
-                visitID: visitID,
-                selectedKind: $selectedSectionKind,
-                sections: sections
+                visitID: visitID
             )
             .navigationTitle(visit.reference)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
-                        Button("Sections") { isPresentingSections = true }
+                        Button("Context") { isPresentingContext = true }
                         Button("Rooms") { isPresentingRooms = true }
                         Button("Summary") { isPresentingSummary = true }
                         Button("Share / Save .daedalusscan") {
@@ -50,13 +45,8 @@ struct VisitDetailView: View {
                     ActivityView(url: url)
                 }
             }
-            .sheet(isPresented: $isPresentingSections) {
-                VisitSectionsSheet(
-                    viewModel: viewModel,
-                    visitID: visitID,
-                    selectedSectionKind: $selectedSectionKind,
-                    sections: sections
-                )
+            .sheet(isPresented: $isPresentingContext) {
+                VisitContextSheet(viewModel: viewModel, visitID: visitID)
             }
             .sheet(isPresented: $isPresentingRooms) {
                 VisitRoomsSheet(
@@ -75,35 +65,18 @@ struct VisitDetailView: View {
                     viewModel.addRoom(to: visitID, named: roomName)
                 }
             } message: {
-                Text("Rooms are optional and available from the secondary Rooms menu.")
-            }
-            .onAppear {
-                syncSelectedSection(with: sectionKinds)
-            }
-            .onChange(of: sectionKinds) { _, newValue in
-                syncSelectedSection(with: newValue)
+                Text("Rooms are available from the secondary Rooms menu.")
             }
         } else {
             Text("Visit not found")
                 .foregroundStyle(.secondary)
         }
     }
-
-    private func syncSelectedSection(with sectionKinds: [SystemComponentKind]) {
-        if sectionKinds.contains(selectedSectionKind) {
-            return
-        }
-        selectedSectionKind = sectionKinds.first ?? .boiler
-    }
 }
 
-private struct VisitSectionsSheet: View {
-    @Environment(\.dismiss) private var dismiss
-
+private struct VisitContextSheet: View {
     @ObservedObject var viewModel: VisitListViewModel
     let visitID: UUID
-    @Binding var selectedSectionKind: SystemComponentKind
-    let sections: [CaptureSection]
 
     private var visit: Visit? {
         viewModel.visit(id: visitID)
@@ -113,62 +86,43 @@ private struct VisitSectionsSheet: View {
         NavigationStack {
             if let visit {
                 List {
-                    Section("Survey Mode") {
-                        Picker(
-                            "Capture mode",
-                            selection: Binding(
-                                get: { visit.captureMode },
-                                set: { viewModel.setCaptureMode($0, for: visitID) }
-                            )
-                        ) {
-                            ForEach(CaptureMode.allCases, id: \.self) { mode in
-                                Text(mode.title).tag(mode)
-                            }
-                        }
-
-                        Picker(
-                            "Current system",
-                            selection: Binding(
-                                get: { visit.currentSystemType },
-                                set: { viewModel.setCurrentSystemType($0, for: visitID) }
-                            )
-                        ) {
-                            ForEach(HeatingSystemType.allCases, id: \.self) { system in
-                                Text(system.title).tag(system)
-                            }
-                        }
-
-                        Picker(
-                            "Proposed system",
-                            selection: Binding(
-                                get: { visit.proposedSystemType },
-                                set: { viewModel.setProposedSystemType($0, for: visitID) }
-                            )
-                        ) {
-                            ForEach(HeatingSystemType.allCases, id: \.self) { system in
-                                Text(system.title).tag(system)
-                            }
+                    Picker(
+                        "Capture mode",
+                        selection: Binding(
+                            get: { visit.captureMode },
+                            set: { viewModel.setCaptureMode($0, for: visitID) }
+                        )
+                    ) {
+                        ForEach(CaptureMode.allCases, id: \.self) { mode in
+                            Text(mode.title).tag(mode)
                         }
                     }
 
-                    Section("Sections") {
-                        ForEach(sections, id: \.kind.id) { section in
-                            Button {
-                                selectedSectionKind = section.kind
-                                dismiss()
-                            } label: {
-                                HStack {
-                                    Text(section.kind.surveyTitle)
-                                    Spacer()
-                                    if selectedSectionKind == section.kind {
-                                        Image(systemName: "checkmark")
-                                    }
-                                }
-                            }
+                    Picker(
+                        "Current system",
+                        selection: Binding(
+                            get: { visit.currentSystemType },
+                            set: { viewModel.setCurrentSystemType($0, for: visitID) }
+                        )
+                    ) {
+                        ForEach(HeatingSystemType.allCases, id: \.self) { system in
+                            Text(system.title).tag(system)
+                        }
+                    }
+
+                    Picker(
+                        "Proposed system",
+                        selection: Binding(
+                            get: { visit.proposedSystemType },
+                            set: { viewModel.setProposedSystemType($0, for: visitID) }
+                        )
+                    ) {
+                        ForEach(HeatingSystemType.allCases, id: \.self) { system in
+                            Text(system.title).tag(system)
                         }
                     }
                 }
-                .navigationTitle("Sections")
+                .navigationTitle("Context")
                 .navigationBarTitleDisplayMode(.inline)
             } else {
                 ContentUnavailableView("Visit not found", systemImage: "exclamationmark.triangle")
