@@ -175,7 +175,8 @@ public final class VisitRepository {
                 reviewNotes: room.reviewNotes,
                 notes: room.notes,
                 survey: room.survey,
-                evidence: restoredEvidence
+                evidence: restoredEvidence,
+                spatialPlacement: room.spatialPlacement
             )
         }
 
@@ -192,7 +193,8 @@ public final class VisitRepository {
                 reviewStatus: component.reviewStatus,
                 reviewNotes: component.reviewNotes,
                 componentAttributes: component.componentAttributes,
-                evidence: restoredEvidence
+                evidence: restoredEvidence,
+                spatialPlacement: component.spatialPlacement
             )
         }
 

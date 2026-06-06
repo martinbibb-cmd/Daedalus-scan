@@ -40,32 +40,32 @@ public final class VisitListViewModel: ObservableObject {
         currentSystemType: HeatingSystemType = .unknown,
         proposedSystemType: HeatingSystemType = .unknown,
         captureMode: CaptureMode = .current
-    ) {
+    ) -> UUID? {
         let trimmedReference = reference.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedReference.isEmpty else {
             errorMessage = "Visit reference is required."
-            return
+            return nil
         }
 
+        let visit = Visit(
+            reference: trimmedReference,
+            twinKind: .system,
+            customerName: customerName.trimmingCharacters(in: .whitespacesAndNewlines),
+            addressLine: addressLine.trimmingCharacters(in: .whitespacesAndNewlines),
+            postcode: postcode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased(),
+            engineerName: normalizedOptionalString(engineerName ?? ""),
+            appointmentDate: appointmentDate,
+            notes: notes.trimmingCharacters(in: .whitespacesAndNewlines),
+            currentSystemType: currentSystemType,
+            proposedSystemType: proposedSystemType,
+            captureMode: captureMode
+        )
         visits.insert(
-            Visit(
-                reference: trimmedReference,
-                twinKind: .system,
-                customerName: customerName.trimmingCharacters(in: .whitespacesAndNewlines),
-                addressLine: addressLine.trimmingCharacters(in: .whitespacesAndNewlines),
-                postcode: postcode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased(),
-                engineerName: normalizedOptionalString(engineerName ?? ""),
-                appointmentDate: appointmentDate,
-                notes: notes.trimmingCharacters(in: .whitespacesAndNewlines),
-                currentSystemType: currentSystemType,
-                proposedSystemType: proposedSystemType,
-                captureMode: captureMode,
-                rooms: [Room(name: "Room 1")],
-                components: []
-            ),
+            visit,
             at: 0
         )
         persistChanges()
+        return visit.id
     }
 
     func addRoom(to visitID: UUID, named name: String) {
@@ -75,8 +75,25 @@ public final class VisitListViewModel: ObservableObject {
             return
         }
 
-        visits[visitIndex].rooms.append(Room(name: trimmedName))
+        visits[visitIndex].rooms.append(
+            Room(
+                name: trimmedName,
+                spatialPlacement: SpatialPlacement(captureState: .approximate, confidence: .low)
+            )
+        )
         persistChanges()
+    }
+
+    func ensureScannedArea(in visitID: UUID) -> UUID? {
+        guard let visitIndex = indexOfVisit(visitID) else { return nil }
+        let nextIndex = visits[visitIndex].rooms.count + 1
+        let room = Room(
+            name: "Scanned Area \(nextIndex)",
+            spatialPlacement: SpatialPlacement(captureState: .approximate, confidence: .low)
+        )
+        visits[visitIndex].rooms.append(room)
+        persistChanges()
+        return room.id
     }
 
     func visit(id: UUID) -> Visit? {
@@ -302,10 +319,38 @@ public final class VisitListViewModel: ObservableObject {
         if let existing = visits[visitIndex].components.first(where: { $0.kind == kind && $0.captureMode == captureMode }) {
             return existing.id
         }
-        let component = SystemComponent(kind: kind, captureMode: captureMode)
+        let component = SystemComponent(
+            kind: kind,
+            captureMode: captureMode,
+            spatialPlacement: SpatialPlacement(captureState: .failed, confidence: .unknown)
+        )
         visits[visitIndex].components.append(component)
         persistChanges()
         return component.id
+    }
+
+    func applyAreaReference(toComponent componentID: UUID, roomID: UUID?, visitID: UUID) {
+        guard let visitIndex = indexOfVisit(visitID),
+              let componentIndex = indexOfComponent(componentID, in: visitIndex) else {
+            return
+        }
+
+        if let roomID,
+           let roomIndex = indexOfRoom(roomID, in: visitIndex) {
+            let room = visits[visitIndex].rooms[roomIndex]
+            visits[visitIndex].components[componentIndex].spatialPlacement = SpatialPlacement(
+                captureState: .areaReferenceOnly,
+                confidence: .low
+            )
+            visits[visitIndex].components[componentIndex].componentAttributes["location"] = room.name
+        } else {
+            visits[visitIndex].components[componentIndex].spatialPlacement = SpatialPlacement(
+                captureState: .failed,
+                confidence: .unknown
+            )
+            visits[visitIndex].components[componentIndex].componentAttributes.removeValue(forKey: "location")
+        }
+        persistChanges()
     }
 
     func setSectionReviewLater(_ enabled: Bool, for kind: SystemComponentKind, visitID: UUID) {

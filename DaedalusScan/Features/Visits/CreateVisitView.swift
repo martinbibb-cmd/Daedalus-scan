@@ -24,6 +24,9 @@ struct CreateVisitView: View {
                     TextField("Visit reference (required)", text: $reference)
                         .textInputAutocapitalization(.characters)
                     LabeledContent("Twin Layers", value: "System · House · Home")
+                    Text("Create the visit, then continue directly into live camera capture.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
 
                 Section("Customer & Site") {

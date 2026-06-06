@@ -23,9 +23,9 @@ struct VisitDetailView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
-                        Button("Context") { isPresentingContext = true }
-                        Button("Rooms") { isPresentingRooms = true }
-                        Button("Summary") { isPresentingSummary = true }
+                        Button("Visit Context") { isPresentingContext = true }
+                        Button("Captured Areas (Fallback)") { isPresentingRooms = true }
+                        Button("Capture Summary") { isPresentingSummary = true }
                         Button("Share / Save .daedalusscan") {
                             if let url = viewModel.makeExportTempURL(for: visitID) {
                                 shareURL = url
@@ -33,7 +33,7 @@ struct VisitDetailView: View {
                             }
                         }
                     } label: {
-                        Label("Visit Actions", systemImage: "ellipsis.circle")
+                        Label("Capture Tools", systemImage: "ellipsis.circle")
                     }
                 }
             }
@@ -58,14 +58,14 @@ struct VisitDetailView: View {
                     }
                 )
             }
-            .alert("Add Room", isPresented: $isPresentingRoomAlert) {
-                TextField("Room name", text: $roomName)
+            .alert("Add Area", isPresented: $isPresentingRoomAlert) {
+                TextField("Area name", text: $roomName)
                 Button("Cancel", role: .cancel) {}
                 Button("Add") {
                     viewModel.addRoom(to: visitID, named: roomName)
                 }
             } message: {
-                Text("Rooms are available from the secondary Rooms menu.")
+                Text("Manual area management is a secondary fallback; live capture remains the main journey.")
             }
         } else {
             Text("Visit not found")
@@ -145,7 +145,7 @@ private struct VisitRoomsSheet: View {
             if let visit {
                 List {
                     if visit.rooms.isEmpty {
-                        Text("No rooms captured")
+                        Text("No scanned areas captured")
                             .foregroundStyle(.secondary)
                     }
                     ForEach(visit.rooms) { room in
@@ -154,11 +154,11 @@ private struct VisitRoomsSheet: View {
                         }
                     }
                 }
-                .navigationTitle("Rooms")
+                .navigationTitle("Captured Areas")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button("Add Room") {
+                        Button("Add Area") {
                             onAddRoom()
                         }
                     }
