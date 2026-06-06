@@ -16,39 +16,39 @@ public enum TwinKind: String, Codable, CaseIterable, Identifiable, Sendable {
         case .home:
             return "Home Twin"
         }
+    }
+}
 
-        public enum HeatingSystemType: String, Codable, CaseIterable, Hashable, Sendable {
-            case combi
-            case regularSealed
-            case regularOpenVented
-            case unknown
+public enum HeatingSystemType: String, Codable, CaseIterable, Hashable, Sendable {
+    case combi
+    case regularSealed
+    case regularOpenVented
+    case unknown
 
-            public var title: String {
-                switch self {
-                case .combi:
-                    return "Combi"
-                case .regularSealed:
-                    return "Regular/System (Cylinder)"
-                case .regularOpenVented:
-                    return "Regular/Open-Vented"
-                case .unknown:
-                    return "Unknown"
-                }
-            }
+    public var title: String {
+        switch self {
+        case .combi:
+            return "Combi"
+        case .regularSealed:
+            return "Regular/System (Cylinder)"
+        case .regularOpenVented:
+            return "Regular/Open-Vented"
+        case .unknown:
+            return "Unknown"
         }
+    }
+}
 
-        public enum CaptureMode: String, Codable, CaseIterable, Hashable, Sendable {
-            case current
-            case proposed
+public enum CaptureMode: String, Codable, CaseIterable, Hashable, Sendable {
+    case current
+    case proposed
 
-            public var title: String {
-                switch self {
-                case .current:
-                    return "Current System"
-                case .proposed:
-                    return "Proposed System"
-                }
-            }
+    public var title: String {
+        switch self {
+        case .current:
+            return "Current System"
+        case .proposed:
+            return "Proposed System"
         }
     }
 }
