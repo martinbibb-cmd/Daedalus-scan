@@ -88,7 +88,13 @@ final class SurveyModelsTests: XCTestCase {
             componentAttributes: [
                 "terminalLocation": "Rear elevation",
                 "approximateRoute": "Observed rising vertically before exiting"
-            ]
+            ],
+            spatialPlacement: SpatialPlacement(
+                anchorID: "anchor-flue-1",
+                approximatePosition: SpatialPosition(x: 1.2, y: 0.6, z: -0.4),
+                captureState: .anchored,
+                confidence: .high
+            )
         )
         let visit = Visit(reference: "VIS-FLUE", twinKind: .system, components: [component])
         let package = VisitPackage(visits: [visit])
@@ -100,6 +106,9 @@ final class SurveyModelsTests: XCTestCase {
         let decoded = try decoder.decode(VisitPackage.self, from: data)
         XCTAssertEqual(decoded.visits[0].components[0].kind, .flue)
         XCTAssertEqual(decoded.visits[0].components[0].name, "Balanced flue")
+        XCTAssertEqual(decoded.visits[0].components[0].spatialPlacement.anchorID, "anchor-flue-1")
+        XCTAssertEqual(decoded.visits[0].components[0].spatialPlacement.captureState, .anchored)
+        XCTAssertEqual(decoded.visits[0].components[0].spatialPlacement.confidence, .high)
         XCTAssertEqual(decoded.visits[0].components[0].componentAttributes["terminalLocation"], "Rear elevation")
         XCTAssertEqual(decoded.visits[0].components[0].componentAttributes["approximateRoute"], "Observed rising vertically before exiting")
     }
@@ -129,7 +138,12 @@ final class SurveyModelsTests: XCTestCase {
                 ),
                 Evidence(kind: .voiceNote, localFileName: "kitchen-note.m4a", embeddedData: Data([0x00, 0x01])),
                 Evidence(kind: .textNote, localFileName: "kitchen-note.txt", embeddedData: textBytes)
-            ]
+            ],
+            spatialPlacement: SpatialPlacement(
+                approximatePosition: SpatialPosition(x: 0.0, y: 0.0, z: 0.0),
+                captureState: .approximate,
+                confidence: .medium
+            )
         )
         let component = SystemComponent(
             kind: .boiler,
@@ -156,7 +170,13 @@ final class SurveyModelsTests: XCTestCase {
                     reviewNotes: "Comment references wrong appliance.",
                     embeddedData: componentTextBytes
                 )
-            ]
+            ],
+            spatialPlacement: SpatialPlacement(
+                anchorID: "boiler-anchor",
+                approximatePosition: SpatialPosition(x: 2.4, y: 1.1, z: -0.8),
+                captureState: .areaReferenceOnly,
+                confidence: .low
+            )
         )
         let visit = Visit(reference: "VIS-001", twinKind: .home, rooms: [room], components: [component])
         let package = VisitPackage(visits: [visit])
@@ -179,6 +199,8 @@ final class SurveyModelsTests: XCTestCase {
         XCTAssertEqual(decodedEvidence[2].embeddedData, textBytes)
         XCTAssertEqual(decoded.visits[0].rooms[0].reviewStatus, .confirmed)
         XCTAssertEqual(decoded.visits[0].rooms[0].reviewNotes, "Room details verified.")
+        XCTAssertEqual(decoded.visits[0].rooms[0].spatialPlacement.captureState, .approximate)
+        XCTAssertEqual(decoded.visits[0].rooms[0].spatialPlacement.confidence, .medium)
         XCTAssertEqual(decoded.visits[0].rooms[0].survey["heating.emitters.present"]?.reviewStatus, .needsReview)
         XCTAssertEqual(decoded.visits[0].rooms[0].survey["heating.emitters.present"]?.reviewNotes, "Double-check emitter count.")
         XCTAssertEqual(decoded.visits[0].rooms[0].survey["ventilation.extract.count"]?.numericValue, 2)
@@ -187,6 +209,8 @@ final class SurveyModelsTests: XCTestCase {
         XCTAssertEqual(decoded.visits[0].components[0].notes, "Observed in utility area.")
         XCTAssertEqual(decoded.visits[0].components[0].reviewStatus, .confirmed)
         XCTAssertEqual(decoded.visits[0].components[0].reviewNotes, "Visual checks complete.")
+        XCTAssertEqual(decoded.visits[0].components[0].spatialPlacement.captureState, .areaReferenceOnly)
+        XCTAssertEqual(decoded.visits[0].components[0].spatialPlacement.anchorID, "boiler-anchor")
         XCTAssertEqual(decoded.visits[0].components[0].componentAttributes["fuelType"], "Natural gas")
         XCTAssertEqual(decoded.visits[0].components[0].componentAttributes["visibleConditionNotes"], "No obvious casing damage noted")
         XCTAssertEqual(decoded.visits[0].components[0].evidence[1].embeddedData, componentTextBytes)
@@ -207,10 +231,10 @@ final class SurveyModelsTests: XCTestCase {
         let decoded = try decoder.decode(VisitPackage.self, from: data)
 
         XCTAssertNotNil(decoded.metadata)
-        XCTAssertEqual(decoded.metadata?.schemaVersion, 1)
+        XCTAssertEqual(decoded.metadata?.schemaVersion, 2)
         XCTAssertEqual(decoded.metadata?.source, "Daedalus Scan")
         XCTAssertEqual(decoded.metadata?.exportedByApp, "Daedalus Scan")
-        XCTAssertEqual(decoded.schemaVersion, 1)
+        XCTAssertEqual(decoded.schemaVersion, 2)
         XCTAssertEqual(decoded.exportedAt, decoded.metadata?.createdAt)
     }
 
@@ -339,6 +363,7 @@ final class SurveyModelsTests: XCTestCase {
         XCTAssertEqual(component.componentAttributes, [:])
         XCTAssertNil(component.reviewStatus)
         XCTAssertNil(component.reviewNotes)
+        XCTAssertEqual(component.spatialPlacement.captureState, .unspecified)
     }
 
     func testLegacyRoomSurveyAndEvidenceDecodeWithoutReviewFields() throws {
@@ -370,6 +395,7 @@ final class SurveyModelsTests: XCTestCase {
         XCTAssertNil(room.survey["heating.emitters.present"]?.reviewNotes)
         XCTAssertNil(room.evidence.first?.reviewStatus)
         XCTAssertNil(room.evidence.first?.reviewNotes)
+        XCTAssertEqual(room.spatialPlacement.captureState, .unspecified)
     }
 
     func testMVPSmokeCaptureLoopRoundTrip() throws {
@@ -401,17 +427,36 @@ final class SurveyModelsTests: XCTestCase {
                         reviewStatus: .confirmed,
                         reviewNotes: "Text evidence captured."
                     )
-                ]
+                ],
+                spatialPlacement: SpatialPlacement(captureState: .approximate, confidence: .low)
             )
         )
         visit.components.append(
-            SystemComponent(kind: .boiler, name: "Boiler A", reviewStatus: .confirmed, reviewNotes: "Boiler reviewed.")
+            SystemComponent(
+                kind: .boiler,
+                name: "Boiler A",
+                reviewStatus: .confirmed,
+                reviewNotes: "Boiler reviewed.",
+                spatialPlacement: SpatialPlacement(captureState: .areaReferenceOnly, confidence: .low)
+            )
         )
         visit.components.append(
-            SystemComponent(kind: .flue, name: "Flue A", reviewStatus: .draft, reviewNotes: "Flue initial capture.")
+            SystemComponent(
+                kind: .flue,
+                name: "Flue A",
+                reviewStatus: .draft,
+                reviewNotes: "Flue initial capture.",
+                spatialPlacement: SpatialPlacement(captureState: .failed, confidence: .unknown)
+            )
         )
         visit.components.append(
-            SystemComponent(kind: .controls, name: "Controls A", reviewStatus: .needsReview, reviewNotes: "Controls review required.")
+            SystemComponent(
+                kind: .controls,
+                name: "Controls A",
+                reviewStatus: .needsReview,
+                reviewNotes: "Controls review required.",
+                spatialPlacement: SpatialPlacement(captureState: .areaReferenceOnly, confidence: .low)
+            )
         )
         visit.sectionStatuses[.boiler] = .present
         visit.sectionStatuses[.flue] = .notAccessible
@@ -427,8 +472,10 @@ final class SurveyModelsTests: XCTestCase {
         XCTAssertEqual(roundTripped.rooms[0].evidence[0].reviewStatus, .needsReview)
         XCTAssertEqual(roundTripped.rooms[0].evidence[1].reviewNotes, "Engineer verbal note.")
         XCTAssertEqual(roundTripped.rooms[0].survey["heating.emitters.present"]?.reviewStatus, .confirmed)
+        XCTAssertEqual(roundTripped.rooms[0].spatialPlacement.captureState, .approximate)
         XCTAssertEqual(roundTripped.components.map(\.kind), [.boiler, .flue, .controls])
         XCTAssertEqual(roundTripped.components[0].reviewStatus, .confirmed)
+        XCTAssertEqual(roundTripped.components[1].spatialPlacement.captureState, .failed)
         XCTAssertEqual(roundTripped.sectionStatuses[.boiler], .present)
         XCTAssertEqual(roundTripped.sectionStatuses[.flue], .notAccessible)
     }

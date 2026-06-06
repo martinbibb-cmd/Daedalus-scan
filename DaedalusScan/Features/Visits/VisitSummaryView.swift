@@ -57,8 +57,8 @@ struct VisitSummaryView: View {
 
     private var captureOverviewSection: some View {
         Section("Capture Overview") {
-            LabeledContent("Rooms", value: "\(visit.rooms.count)")
-            LabeledContent("System components", value: "\(visit.components.count)")
+            LabeledContent("Scanned areas", value: "\(visit.rooms.count)")
+            LabeledContent("Spatial objects", value: "\(visit.components.count)")
             LabeledContent("Evidence items", value: "\(totalEvidence)")
             LabeledContent("Survey responses", value: "\(totalSurveyResponses)")
             if totalSections == 0 {

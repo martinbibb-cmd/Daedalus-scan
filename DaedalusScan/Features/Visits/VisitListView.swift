@@ -13,6 +13,7 @@ public struct VisitListView: View {
     @State private var isPresentingShareSheet = false
     @State private var shareURL: URL?
     @State private var searchText = ""
+    @State private var navigationPath: [UUID] = []
 
     private var filteredVisits: [Visit] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -26,7 +27,7 @@ public struct VisitListView: View {
     }
 
     public var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navigationPath) {
             List {
                 if viewModel.visits.isEmpty {
                     ContentUnavailableView(
@@ -81,7 +82,7 @@ public struct VisitListView: View {
         }
         .sheet(isPresented: $isPresentingCreateVisit) {
             CreateVisitView { reference, customerName, addressLine, postcode, engineerName, appointmentDate, notes, currentSystemType, proposedSystemType, captureMode in
-                viewModel.createVisit(
+                if let visitID = viewModel.createVisit(
                     reference: reference,
                     customerName: customerName,
                     addressLine: addressLine,
@@ -92,7 +93,9 @@ public struct VisitListView: View {
                     currentSystemType: currentSystemType,
                     proposedSystemType: proposedSystemType,
                     captureMode: captureMode
-                )
+                ) {
+                    navigationPath = [visitID]
+                }
             }
         }
         .sheet(isPresented: $isPresentingShareSheet) {

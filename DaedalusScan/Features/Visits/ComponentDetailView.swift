@@ -14,6 +14,7 @@ struct ComponentDetailView: View {
         Group {
             if let component = viewModel.component(visitID: visitID, componentID: componentID) {
                 List {
+                    spatialSection(component: component)
                     Section("Component") {
                         LabeledContent("Type", value: component.kind.title)
                         if !component.name.isEmpty {
@@ -161,6 +162,23 @@ struct ComponentDetailView: View {
             }
         } else if let url = viewModel.prepareComponentVoiceNoteURL(for: componentID, in: visitID) {
             recorder.startRecording(to: url)
+        }
+    }
+
+    @ViewBuilder
+    private func spatialSection(component: SystemComponent) -> some View {
+        Section("Spatial Capture") {
+            LabeledContent("State", value: component.spatialPlacement.captureState.title)
+            LabeledContent("Confidence", value: component.spatialPlacement.confidence.title)
+            LabeledContent("Anchor", value: component.spatialPlacement.anchorID ?? "None")
+            if let position = component.spatialPlacement.approximatePosition {
+                LabeledContent(
+                    "Approximate position",
+                    value: "\(position.x, specifier: "%.2f"), \(position.y, specifier: "%.2f"), \(position.z, specifier: "%.2f")"
+                )
+            }
+        } footer: {
+            Text("Spatial objects remain exportable even when capture falls back to area-reference-only placement.")
         }
     }
 }

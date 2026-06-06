@@ -1,10 +1,26 @@
 # Daedalus Scan
 
-Canonical iOS field-capture application for the Daedalus platform.
+Canonical iOS field-scanning application for the Daedalus platform.
 
 ## Purpose
 
-Daedalus Scan captures structured survey data, photos and voice notes for site visits. It does not generate recommendations, quotations, pricing or customer advice.
+Daedalus Scan captures the job by walking the property with the camera, scanning rooms/areas, identifying heating and hot-water objects in space, and attaching evidence to those spatial objects.
+
+The app is capture-only. It records what is physically present, where it was observed, and how confident the capture is. It does not generate recommendations, quotations, pricing, heat-loss outputs, or customer advice.
+
+## Product direction
+
+Daedalus Scan V2 is spatial-first and camera-first:
+
+- open a visit and land in live capture
+- walk the property
+- scan rooms/areas
+- identify heating and hot-water objects in position
+- attach photos, voice notes, and text evidence to those captured objects
+- preserve spatial placement or explicit fallback state when anchoring is unavailable
+- export the structured job package for downstream reasoning in Mind
+
+Visit list, summaries, and detail forms remain available only as secondary fallback/admin surfaces. They are not the main survey journey.
 
 ## Architecture
 
@@ -15,34 +31,31 @@ Daedalus Scan captures structured survey data, photos and voice notes for site v
 - MVVM presentation flow
 - `DaedalusContracts` source compiled directly into `DaedalusScanCore` (no SPM boundary for the app build; `DaedalusContracts/Package.swift` is kept for standalone `swift test` validation only)
 - JSON persistence for local-first storage
+- visit packages export visit metadata, scanned areas, spatial objects, evidence, review state, and spatial fallback metadata
 
-## Capture-only boundaries
+## Core capture model
 
-Daedalus Scan remains strictly capture-only:
-- captures visit metadata, structured survey answers, photos and voice notes
-- does not include LiDAR capture yet
-- does not include recommendations
-- does not include quotations
-- does not include pricing
-- does not include heat-loss analysis
-- does not include customer advice
-- does not include sales logic
+Export/import packages are expected to represent:
 
-## Known non-goals (MVP)
-
-- no LiDAR yet
-- no recommendations
-- no pricing
-- no heat-loss
-- no customer advice
+- visit metadata
+- scanned rooms/areas
+- spatial heating/hot-water objects
+- object kind/type
+- approximate position and anchor metadata when available
+- photos
+- voice notes
+- text notes
+- review status
+- spatial confidence
+- fallback state when spatial capture fails
 
 ## Features in this scaffold
 
-- Visit list
-- Create visit workflow
-- Room list workflow
-- System component capture workflow
-- Structured survey questions per room
+- Visit list and create visit entry point
+- Immediate transition into live capture when a visit is opened or created
+- Camera-first capture shell for object/area capture
+- Spatial fallback metadata on rooms/areas and components
+- Secondary fallback detail panels for areas and objects
 - Photo capture attachment
 - Voice note attachment
 - Export/import visit packages
@@ -90,23 +103,18 @@ cd DaedalusContracts
 swift test
 ```
 
-## MVP manual test script (iPhone)
+## Manual smoke script (iPhone)
 
 Use this script on a physical iPhone after running `./bootstrap.sh` and launching `DaedalusScanApp`.
 
-1. Create a visit with reference `MVP-SMOKE-001`.
-2. Add one additional room.
-3. Add three components: one boiler, one flue, and one other component kind.
-4. In a room, attach one photo, one voice note, and one text note.
-5. In a component, attach one photo, one voice note, and one text note.
-6. Set section statuses (for example boiler = Present, flue = Not Accessible).
-7. Set review status + notes on:
-   - room
-   - room survey response
-   - room evidence item
-   - component
-   - component evidence item
+1. Create a visit with reference `SPATIAL-SMOKE-001`.
+2. Confirm the visit opens directly into live capture and auto-launches the camera.
+3. Capture a scanned area from the Area target.
+4. Capture at least three spatial objects: boiler, flue, and one additional object kind.
+5. Attach photo, voice, and text evidence during capture.
+6. Open the fallback detail panels and confirm each captured area/object shows spatial state and confidence metadata.
+7. Mark at least one object or evidence item as needing review.
 8. Export the visit package and verify the export completes.
 9. Import the exported package and choose **Keep Both** when prompted for conflict resolution.
 10. Re-import the same package and choose **Replace Existing Visit** when prompted.
-11. Confirm the visit list and detail screens still open correctly after both conflict paths.
+11. Confirm the imported visit still opens into live capture and that the fallback detail panels preserve spatial metadata.

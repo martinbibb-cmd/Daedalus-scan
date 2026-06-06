@@ -50,7 +50,7 @@ struct SurveySectionCaptureView: View {
     private var selectedRoomName: String {
         guard let visit,
               let room = visit.rooms.first(where: { $0.id == selectedRoomID }) else {
-            return "Unassigned"
+            return "No scanned area selected"
         }
         return room.name
     }
@@ -312,7 +312,9 @@ struct SurveySectionCaptureView: View {
     private func resolveCaptureDestination() -> CaptureDestination? {
         switch selectedTarget {
         case .room:
-            guard let roomID = selectedRoomID else { return nil }
+            let roomID = selectedRoomID ?? viewModel.ensureScannedArea(in: visitID)
+            selectedRoomID = roomID
+            guard let roomID else { return nil }
             return .room(roomID)
         default:
             guard let kind = selectedTarget.componentKind,
@@ -436,12 +438,9 @@ struct SurveySectionCaptureView: View {
     }
 
     private func applyLocationContextIfAvailable(toComponent componentID: UUID) {
-        guard let visit,
-              let roomID = selectedRoomID,
-              let room = visit.rooms.first(where: { $0.id == roomID }) else {
-            return
-        }
-        viewModel.updateComponentAttribute(room.name, for: "location", componentID: componentID, visitID: visitID)
+        guard let visit else { return }
+        let roomID = selectedRoomID ?? visit.rooms.first?.id
+        viewModel.applyAreaReference(toComponent: componentID, roomID: roomID, visitID: visitID)
     }
 
     private func openSelectedTargetEditor() {
@@ -482,7 +481,7 @@ private enum CaptureTarget: String, CaseIterable, Identifiable {
         case .cylinder: return "Cylinder"
         case .meter: return "Meter"
         case .radiator: return "Radiator"
-        case .room: return "Room"
+        case .room: return "Area"
         case .general: return "General"
         }
     }

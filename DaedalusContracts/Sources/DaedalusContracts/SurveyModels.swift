@@ -160,6 +160,66 @@ public struct Evidence: Codable, Hashable, Identifiable, Sendable {
     }
 }
 
+public enum SpatialCaptureState: String, Codable, CaseIterable, Hashable, Sendable {
+    case unspecified
+    case anchored
+    case approximate
+    case areaReferenceOnly
+    case failed
+
+    public var title: String {
+        switch self {
+        case .unspecified: return "Unspecified"
+        case .anchored: return "Anchored"
+        case .approximate: return "Approximate"
+        case .areaReferenceOnly: return "Area Reference Only"
+        case .failed: return "Spatial Capture Failed"
+        }
+    }
+}
+
+public enum SpatialConfidence: String, Codable, CaseIterable, Hashable, Sendable {
+    case unknown
+    case low
+    case medium
+    case high
+
+    public var title: String {
+        rawValue.capitalized
+    }
+}
+
+public struct SpatialPosition: Codable, Hashable, Sendable {
+    public var x: Double
+    public var y: Double
+    public var z: Double
+
+    public init(x: Double, y: Double, z: Double) {
+        self.x = x
+        self.y = y
+        self.z = z
+    }
+}
+
+public struct SpatialPlacement: Codable, Hashable, Sendable {
+    public var anchorID: String?
+    public var approximatePosition: SpatialPosition?
+    public var captureState: SpatialCaptureState
+    public var confidence: SpatialConfidence
+
+    public init(
+        anchorID: String? = nil,
+        approximatePosition: SpatialPosition? = nil,
+        captureState: SpatialCaptureState = .unspecified,
+        confidence: SpatialConfidence = .unknown
+    ) {
+        self.anchorID = anchorID
+        self.approximatePosition = approximatePosition
+        self.captureState = captureState
+        self.confidence = confidence
+    }
+}
+
 public struct Room: Codable, Hashable, Identifiable, Sendable {
     public let id: UUID
     public var name: String
@@ -168,6 +228,7 @@ public struct Room: Codable, Hashable, Identifiable, Sendable {
     public var notes: String
     public var survey: [String: SurveyResponse]
     public var evidence: [Evidence]
+    public var spatialPlacement: SpatialPlacement
 
     public init(
         id: UUID = UUID(),
@@ -176,7 +237,8 @@ public struct Room: Codable, Hashable, Identifiable, Sendable {
         reviewNotes: String? = nil,
         notes: String = "",
         survey: [String: SurveyResponse] = [:],
-        evidence: [Evidence] = []
+        evidence: [Evidence] = [],
+        spatialPlacement: SpatialPlacement = SpatialPlacement()
     ) {
         self.id = id
         self.name = name
@@ -185,6 +247,7 @@ public struct Room: Codable, Hashable, Identifiable, Sendable {
         self.notes = notes
         self.survey = survey
         self.evidence = evidence
+        self.spatialPlacement = spatialPlacement
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -195,6 +258,7 @@ public struct Room: Codable, Hashable, Identifiable, Sendable {
         case notes
         case survey
         case evidence
+        case spatialPlacement
     }
 
     public init(from decoder: Decoder) throws {
@@ -206,6 +270,7 @@ public struct Room: Codable, Hashable, Identifiable, Sendable {
         notes = try container.decodeIfPresent(String.self, forKey: .notes) ?? ""
         survey = try container.decodeIfPresent([String: SurveyResponse].self, forKey: .survey) ?? [:]
         evidence = try container.decodeIfPresent([Evidence].self, forKey: .evidence) ?? []
+        spatialPlacement = try container.decodeIfPresent(SpatialPlacement.self, forKey: .spatialPlacement) ?? SpatialPlacement()
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -217,6 +282,7 @@ public struct Room: Codable, Hashable, Identifiable, Sendable {
         try container.encode(notes, forKey: .notes)
         try container.encode(survey, forKey: .survey)
         try container.encode(evidence, forKey: .evidence)
+        try container.encode(spatialPlacement, forKey: .spatialPlacement)
     }
 }
 
@@ -462,6 +528,7 @@ public struct SystemComponent: Codable, Hashable, Identifiable, Sendable {
     public var reviewNotes: String?
     public var componentAttributes: [String: String]
     public var evidence: [Evidence]
+    public var spatialPlacement: SpatialPlacement
 
     public init(
         id: UUID = UUID(),
@@ -474,7 +541,8 @@ public struct SystemComponent: Codable, Hashable, Identifiable, Sendable {
         reviewStatus: ReviewStatus? = nil,
         reviewNotes: String? = nil,
         componentAttributes: [String: String] = [:],
-        evidence: [Evidence] = []
+        evidence: [Evidence] = [],
+        spatialPlacement: SpatialPlacement = SpatialPlacement()
     ) {
         self.id = id
         self.kind = kind
@@ -487,6 +555,7 @@ public struct SystemComponent: Codable, Hashable, Identifiable, Sendable {
         self.reviewNotes = reviewNotes
         self.componentAttributes = componentAttributes
         self.evidence = evidence
+        self.spatialPlacement = spatialPlacement
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -501,6 +570,7 @@ public struct SystemComponent: Codable, Hashable, Identifiable, Sendable {
         case reviewNotes
         case componentAttributes
         case evidence
+        case spatialPlacement
     }
 
     public init(from decoder: Decoder) throws {
@@ -516,6 +586,7 @@ public struct SystemComponent: Codable, Hashable, Identifiable, Sendable {
         reviewNotes = try container.decodeIfPresent(String.self, forKey: .reviewNotes)
         componentAttributes = try container.decodeIfPresent([String: String].self, forKey: .componentAttributes) ?? [:]
         evidence = try container.decodeIfPresent([Evidence].self, forKey: .evidence) ?? []
+        spatialPlacement = try container.decodeIfPresent(SpatialPlacement.self, forKey: .spatialPlacement) ?? SpatialPlacement()
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -531,6 +602,7 @@ public struct SystemComponent: Codable, Hashable, Identifiable, Sendable {
         try container.encodeIfPresent(reviewNotes, forKey: .reviewNotes)
         try container.encode(componentAttributes, forKey: .componentAttributes)
         try container.encode(evidence, forKey: .evidence)
+        try container.encode(spatialPlacement, forKey: .spatialPlacement)
     }
 }
 
@@ -723,7 +795,7 @@ public struct VisitPackage: Codable, Hashable, Sendable {
 }
 
 public struct VisitPackageMetadata: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
     public static let canonicalSource = "Daedalus Scan"
 
     public var packageID: UUID
