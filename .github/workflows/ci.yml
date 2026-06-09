@@ -5,20 +5,57 @@ on:
   pull_request:
 
 jobs:
-  ci:
+  hygiene:
     runs-on: self-hosted
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Show Swift version
-        run: swift --version
+      # This self-hosted runner is Ubuntu-only today. Real iOS build and test
+      # coverage requires a future macOS runner with Xcode and XcodeGen.
+      - name: Verify expected repository structure
+        shell: bash
+        run: |
+          set -euo pipefail
 
-      - name: Build contracts package
-        working-directory: DaedalusContracts
-        run: swift build
+          test -f README.md
+          test -f project.yml
+          test -f bootstrap.sh
+          test -f DaedalusContracts/Package.swift
+          test -d DaedalusScan
+          test -d DaedalusScan/App
+          test -d DaedalusScan/Features
+          test -d DaedalusScan/Persistence
+          test -d DaedalusContracts/Sources/DaedalusContracts
+          test -d DaedalusContracts/Tests/DaedalusContractsTests
 
-      - name: Test contracts package
-        working-directory: DaedalusContracts
-        run: swift test
+      - name: Validate XcodeGen project metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          grep -q '^name: DaedalusScan$' project.yml
+          grep -q 'DaedalusScanCore:' project.yml
+          grep -q 'DaedalusScanApp:' project.yml
+          grep -q 'platform: iOS' project.yml
+          grep -q 'SWIFT_VERSION: 5.10' project.yml
+
+      - name: Check package and app naming hygiene
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test ! -e AtlasScan
+          test ! -e AtlasContracts
+          test ! -e AtlasScan.xcodeproj
+          ! find . -maxdepth 3 -name '*AtlasScan*' -o -name '*AtlasContracts*' | grep .
+
+      - name: Check bootstrap documents macOS-only build path
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          grep -q 'xcodegen generate' bootstrap.sh
+          grep -q 'swift test' bootstrap.sh
+          grep -q 'Xcode' README.md
